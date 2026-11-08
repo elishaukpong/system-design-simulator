@@ -6,6 +6,7 @@ import { stars } from './scenarios';
 export interface DebriefActions {
   retry(): void;
   pickScenario(): void;
+  replay(): void;
 }
 
 const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767'];
@@ -91,6 +92,7 @@ export function openDebrief(scenario: Scenario, result: RunResult, actions: Debr
       'div',
       { class: 'actions' },
       h('button', { class: 'primary', on: { click: () => { close(); actions.retry(); } } }, '▶ Run again'),
+      result.frames.length ? h('button', { title: 'Watch the run again in 3D, scrubbable', on: { click: () => { close(); actions.replay(); } } }, '⏵ Replay in 3D') : null,
       h('button', { on: { click: close } }, 'Back to the design'),
       h('button', { on: { click: () => { close(); actions.pickScenario(); } } }, 'Other scenarios'),
     ),

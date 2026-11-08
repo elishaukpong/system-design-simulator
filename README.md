@@ -25,13 +25,15 @@ Chaos: select a component and **Kill** it, or **Flush** a cache.
 
 ## Scenarios
 
-**🎯 Scenarios** opens eight graded challenges, from *Launch day* to *Telemetry ingest*. Each one fixes the traffic mix, scripts the load and the chaos (a cache flush, a provider outage, a zone going dark), and sets the targets:
+**🎯 Scenarios** opens twelve graded challenges, from *Launch day* to *Region outage*. Each one fixes the traffic mix, scripts the load and the chaos (a cache flush, a provider outage, a zone going dark), and sets the targets:
 
 - **Must**: availability and p99 latency. Pass both for ★.
 - **Budget**: average monthly cost. ★★.
 - **Bonus**: the scenario's twist (availability during the chaos, replica lag, processing lag, retry amplification). ★★★.
 
 Design freely, then **Start test**. The design locks, the script plays, the checks update live. The debrief shows offered vs served traffic, p99 against its target, a strip of which component was the binding pressure over time, what gave way in order, and the trade-offs your design accepted.
+
+After a test, **⏵ Replay in 3D** puts the scene back in the run: scrub the timeline, play it at 1×, 5× or 15×, and watch it break again with the binding pressure and the event log as they were at that second.
 
 Each scenario keeps its own saved design, separate from the sandbox. Every scenario has a reference solution in `tests/scenarios.test.ts` that earns three stars, and a test that its starting design fails.
 
@@ -47,6 +49,15 @@ Each scenario keeps its own saved design, separate from the sandbox. Every scena
 
 Mouse: drag to pan, right-drag to rotate, scroll to zoom.
 
+## Regions
+
+The ground is three region plates: **us-east** in the middle, **eu-west** and **ap-south** across the water. A component's region is the plate it sits on, so drag it across to move it. Connections that cross an ocean show their round trip.
+
+- Users pay a 30ms last mile to your entry point (10ms to a CDN edge), plus the round trip if it is in another region.
+- **Clients** route to the nearest *healthy* entry point, and their **traffic share** splits users between regions.
+- **🌩 Kill region** (inspector) takes a whole plate down for 60s.
+- A database with a **standby region** promotes it after its failover time, and logs the writes that never made it across (RPO).
+
 ## The model
 
 Traffic is a flow, not individual requests, so 1M rps costs the same to simulate as 10. The particles are a visual sample.
@@ -61,7 +72,9 @@ Every component is a queue: utilisation = load / capacity, latency climbs as uti
 - **Cache-aside** with warm-up: a cold or dead cache sends every read to the database at once.
 - **Replicas** replay every primary write, and they lag when saturated.
 - **Shards** are capped by their hottest key.
-- **Queues** turn a spike into a backlog. **Circuit breakers** fail fast so a dependency can recover.
+- **Network**: every connection costs its round trip, so a database across an ocean shows up in p99 and in how long app workers are held.
+- **Queues** turn a spike into a backlog. Failed jobs wait out the **visibility timeout** and retry up to **max receives**, then land in the **dead-letter queue**, or are lost without one. Workers that are not **idempotent** duplicate work when an ambiguous failure is retried.
+- **Circuit breakers** fail fast so a dependency can recover.
 - **Search**: without a search index, searches hit the DB as LIKE queries costing 4× a normal query.
 
 Capacities and prices are rough, order-of-magnitude numbers (`src/sim/profiles.ts`). They are for building intuition about shapes and ratios, not for capacity planning.

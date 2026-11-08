@@ -13,6 +13,7 @@ import { DiagnosisPanel, EventLog, MetricsStrip } from './ui/hud';
 import { openDebrief } from './ui/debrief';
 import { Inspector } from './ui/inspector';
 import { Palette } from './ui/palette';
+import { Replay } from './ui/replay';
 import { BriefPanel, openScenarioPicker } from './ui/scenarios';
 import { Toolbar } from './ui/toolbar';
 
@@ -31,6 +32,7 @@ let simAccumulator = 0;
 let scenario: Scenario | null = null;
 let run: ScenarioRun | null = null;
 let lastResult: RunResult | null = null;
+let replay: Replay | null = null;
 const MODE_KEY = 'sds:mode';
 
 const palette = new Palette(document.getElementById('palette')!, (kind, event) => {
@@ -93,6 +95,7 @@ const brief = new BriefPanel(document.getElementById('brief')!, {
 const debriefActions = {
   retry: () => startTest(),
   pickScenario: () => openScenarioPicker(loadProgress(), enterScenario),
+  replay: () => startReplay(),
 };
 
 store.onDesign(() => {
@@ -129,6 +132,7 @@ function scenarioStart(s: Scenario): SavedState {
 function enterScenario(id: string): void {
   const next = scenarioById(id);
   if (!next) return;
+  if (replay) exitReplay();
   if (run) abortTest();
   scenario = next;
   lastResult = null;
@@ -142,6 +146,7 @@ function enterScenario(id: string): void {
 }
 
 function exitScenario(): void {
+  if (replay) exitReplay();
   if (run) abortTest();
   scenario = null;
   lastResult = null;
@@ -154,8 +159,29 @@ function exitScenario(): void {
   renderBrief();
 }
 
+function startReplay(): void {
+  if (!scenario || !lastResult || run) return;
+  if (replay) exitReplay();
+  interaction.cancel();
+  store.editingLocked = true;
+  running = false;
+  replay = new Replay(viewport, lastResult, scenario.duration, exitReplay);
+  inspector.render();
+  syncChrome();
+}
+
+function exitReplay(): void {
+  if (!replay) return;
+  replay.destroy();
+  replay = null;
+  store.editingLocked = false;
+  inspector.render();
+  syncChrome();
+}
+
 function startTest(): void {
   if (!scenario) return;
+  if (replay) exitReplay();
   interaction.cancel();
   run = new ScenarioRun(scenario, store.design, sim);
   store.editingLocked = true;
@@ -267,6 +293,12 @@ function syncChrome(): void {
 
 window.addEventListener('keydown', (e) => {
   if (isTyping(e)) return;
+  if (replay && (e.key === 'Escape' || e.key === ' ')) {
+    e.preventDefault();
+    if (e.key === ' ') replay.toggle();
+    else exitReplay();
+    return;
+  }
   if (e.key === 'Escape') {
     interaction.cancel();
     store.select(null);
@@ -346,7 +378,7 @@ function openJsonDialog(mode: 'export' | 'import'): void {
 let last = performance.now();
 let uiTimer = 0;
 
-function frame(now: number): void {
+function tick(now: number): void {
   const frameDt = Math.min(0.1, (now - last) / 1000);
   last = now;
   let simAdvanced = 0;
@@ -370,6 +402,24 @@ function frame(now: number): void {
     if (steps === MAX_STEPS_PER_FRAME) simAccumulator = 0;
   }
 
+  if (replay) {
+    replay.advance(frameDt);
+    const frame = replay.frame();
+    scene.update(frame, frameDt, replay.playing);
+    scene.render();
+    uiTimer -= frameDt;
+    if (uiTimer <= 0 && frame) {
+      uiTimer = 0.25;
+      const at = replay.t;
+      metrics.update(frame.global, 0);
+      diagnosis.render(diagnose(store.design, frame), true);
+      inspector.refresh(frame);
+      events.render(replay.result.events.filter((e) => e.t <= at));
+    }
+    requestAnimationFrame(tick);
+    return;
+  }
+
   const snap = sim.snapshot;
   scene.update(snap, frameDt * (running ? Math.min(speed, 3) : 1), running);
   scene.render();
@@ -385,7 +435,7 @@ function frame(now: number): void {
     toolbar.update(running, speed, interaction.connectMode, sim.t);
   }
 
-  requestAnimationFrame(frame);
+  requestAnimationFrame(tick);
 }
 
-requestAnimationFrame(frame);
+requestAnimationFrame(tick);

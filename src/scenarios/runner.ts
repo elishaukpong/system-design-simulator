@@ -11,6 +11,7 @@ const STEP = 0.1;
 export class ScenarioRun {
   readonly samples: Sample[] = [];
   readonly chaosLog: ChaosLogEntry[] = [];
+  readonly frames: SimSnapshot[] = [];
   result: RunResult | null = null;
   private nextSample = SAMPLE_EVERY;
   private fired = new Set<number>();
@@ -50,11 +51,12 @@ export class ScenarioRun {
     if (snap.global.t >= this.nextSample) {
       this.nextSample += SAMPLE_EVERY;
       this.samples.push(this.sample(snap));
+      this.frames.push(snap);
     }
 
     if (snap.global.t >= this.scenario.duration) {
       this.stop();
-      this.result = grade(this.scenario, this.design, this.samples, this.chaosLog);
+      this.result = grade(this.scenario, this.design, this.samples, this.chaosLog, this.frames, [...this.sim.events]);
     }
   }
 

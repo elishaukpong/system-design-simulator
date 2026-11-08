@@ -71,7 +71,7 @@ export function diagnose(design: Design, snap: SimSnapshot): Diagnosis {
 function scoreFor(m: NodeMetrics): number {
   switch (m.reason) {
     case 'down':
-      return 10;
+      return m.inRps > 0 ? 10 : 0;
     case 'no-backend':
       return 9;
     case 'replication-lag':

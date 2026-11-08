@@ -1,5 +1,5 @@
 import type { RegionId } from '../sim/regions';
-import type { ComponentKind, Design, ParamValue } from '../sim/types';
+import type { ComponentKind, Design, ParamValue, SimEvent, SimSnapshot } from '../sim/types';
 
 export type CriterionRole = 'core' | 'budget' | 'bonus';
 
@@ -108,4 +108,6 @@ export interface RunResult {
   samples: Sample[];
   chaos: ChaosLogEntry[];
   averageCost: number;
+  frames: SimSnapshot[];
+  events: SimEvent[];
 }

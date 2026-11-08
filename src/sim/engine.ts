@@ -231,11 +231,9 @@ export class Simulation {
     for (const node of nodes) {
       const st = this.stateFor(node);
       this.syncInstances(node, st);
-      for (const instance of st.instances) {
-        if (instance.readyAt > t - dt && instance.readyAt <= t && instance.cause === 'restart') {
-          this.log(node.id, 'info', `${node.name}: an instance is back up.`);
-        }
-      }
+      const recovered = st.instances.filter((i) => i.readyAt > t - dt && i.readyAt <= t && i.cause === 'restart').length;
+      if (recovered === 1) this.log(node.id, 'info', `${node.name}: an instance is back up.`);
+      if (recovered > 1) this.log(node.id, 'info', `${node.name}: ${recovered} instances are back up.`);
     }
 
     const { order, links, parents } = this.graph(nodes, byId);

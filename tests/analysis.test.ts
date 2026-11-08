@@ -76,4 +76,34 @@ describe('diagnose', () => {
 
     expect(result.warnings.some((w) => w.includes('no Workers'))).toBe(true);
   });
+
+  it('a dead component nobody routes to is not the binding pressure', () => {
+    const d = design(
+      [
+        ['users', 'clients', { staticPct: 0, retries: 0 }],
+        ['lb-us', 'lb'],
+        ['app-us', 'app', { instances: 4 }],
+        ['lb-eu', 'lb'],
+        ['app-eu', 'app', { instances: 4 }],
+      ],
+      [
+        ['users', 'lb-us'],
+        ['users', 'lb-eu'],
+        ['lb-us', 'app-us'],
+        ['lb-eu', 'app-eu'],
+      ],
+    );
+    d.nodes.find((n) => n.id === 'lb-eu')!.z = 96;
+    d.nodes.find((n) => n.id === 'app-eu')!.z = 96;
+    const sim = new Simulation();
+    sim.setDesign(d);
+    sim.setTraffic({ peakRps: 100, shape: 'steady' });
+    for (let i = 0; i < 20; i++) sim.step(0.1);
+    sim.killRegion('us-east', 60);
+    for (let i = 0; i < 20; i++) sim.step(0.1);
+    const result = diagnose(d, sim.snapshot!);
+
+    expect(result.binding?.nodeId ?? null).not.toBe('lb-us');
+    expect(result.binding?.nodeId ?? null).not.toBe('app-us');
+  });
 });

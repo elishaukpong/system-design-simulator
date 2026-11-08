@@ -1,13 +1,20 @@
 import { formatSeconds } from '../sim/analysis';
 import { boolParam, numberParam } from '../sim/catalog';
-import type { Design } from '../sim/types';
+import type { Design, SimEvent, SimSnapshot } from '../sim/types';
 import type { ChaosLogEntry, Criterion, CriterionResult, GradedCriterion, RunResult, Sample, Scenario, Tradeoff, Wall } from './types';
 
 export function evaluateAll(scenario: Scenario, samples: Sample[]): CriterionResult[] {
   return scenario.criteria.map((c) => evaluate(c, samples));
 }
 
-export function grade(scenario: Scenario, design: Design, samples: Sample[], chaos: ChaosLogEntry[]): RunResult {
+export function grade(
+  scenario: Scenario,
+  design: Design,
+  samples: Sample[],
+  chaos: ChaosLogEntry[],
+  frames: SimSnapshot[] = [],
+  events: SimEvent[] = [],
+): RunResult {
   const criteria = evaluateAll(scenario, samples);
   const core = criteria.filter((c) => c.role === 'core');
   const budget = criteria.filter((c) => c.role === 'budget');
@@ -32,6 +39,8 @@ export function grade(scenario: Scenario, design: Design, samples: Sample[], cha
     samples,
     chaos,
     averageCost: average(samples.map((s) => s.cost)),
+    frames,
+    events,
   };
 }
 
@@ -172,8 +181,14 @@ function tradeoffs(design: Design, samples: Sample[]): Tradeoff[] {
   for (const n of design.nodes) {
     const single = (n.kind === 'app' || n.kind === 'workers') && numberParam(n.params, 'instances', 1) === 1 && !boolParam(n.params, 'autoscale', false);
     const singleCache = n.kind === 'cache' && numberParam(n.params, 'nodes', 1) === 1;
-    if (single || singleCache || n.kind === 'db') {
-      out.push({ text: `${n.name} is a single point of failure${n.kind === 'db' ? ' (no failover modelled)' : ''}.`, curriculum: 'Day 28 · Failure modes' });
+    const standby = (n.kind === 'db' || n.kind === 'shard') && n.params.standby && n.params.standby !== 'none';
+    if (standby) {
+      out.push({
+        text: `${n.name} fails over to ${n.params.standby}: ${numberParam(n.params, 'failoverS', 30)}s of downtime (RTO), and the writes still in flight to the standby are lost (RPO). You pay for a second database to get that.`,
+        curriculum: 'Day 12 · Replication',
+      });
+    } else if (single || singleCache || n.kind === 'db') {
+      out.push({ text: `${n.name} is a single point of failure.`, curriculum: 'Day 28 · Failure modes' });
     }
   }
   return out;
