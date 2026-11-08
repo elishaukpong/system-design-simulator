@@ -109,6 +109,8 @@ export class Simulation {
   private traffic: TrafficSettings = { peakRps: 100, shape: 'steady' };
   private states = new Map<string, NodeState>();
   private last: SimSnapshot | null = null;
+  private script: ((t: number) => number) | null = null;
+  private overrides = new Map<string, { params: NodeSpec['params']; until: number }>();
 
   setDesign(design: Design): void {
     this.design = design;
@@ -125,10 +127,19 @@ export class Simulation {
     this.traffic = traffic;
   }
 
+  setScript(script: ((t: number) => number) | null): void {
+    this.script = script;
+  }
+
+  overrideParams(nodeId: string, params: NodeSpec['params'], seconds: number): void {
+    this.overrides.set(nodeId, { params, until: this.t + seconds });
+  }
+
   reset(): void {
     this.t = 0;
     this.events = [];
     this.states.clear();
+    this.overrides.clear();
     this.last = null;
     for (const node of this.design.nodes) {
       this.syncInstances(node, this.stateFor(node));
@@ -139,17 +150,23 @@ export class Simulation {
     return this.last;
   }
 
-  kill(nodeId: string): void {
+  kill(nodeId: string, fraction = 1, downSeconds = BOOT_SECONDS): void {
     const node = this.design.nodes.find((n) => n.id === nodeId);
     if (!node) return;
     const st = this.stateFor(node);
-    for (const instance of st.instances) {
-      instance.readyAt = this.t + BOOT_SECONDS;
+    const up = st.instances.filter((i) => i.readyAt <= this.t);
+    const victims = fraction >= 1 ? st.instances : up.slice(0, Math.max(1, Math.round(up.length * fraction)));
+    for (const instance of victims) {
+      instance.readyAt = this.t + downSeconds;
       instance.cause = 'restart';
     }
-    st.warmth = 0;
-    st.backlog = 0;
-    this.log(nodeId, 'error', `${node.name} killed. Back in ${BOOT_SECONDS}s.`);
+    st.warmth *= fraction >= 1 ? 0 : 1 - victims.length / Math.max(1, st.instances.length);
+    if (fraction >= 1) st.backlog = 0;
+    this.log(
+      nodeId,
+      'error',
+      fraction >= 1 ? `${node.name} killed. Back in ${downSeconds}s.` : `${node.name}: lost ${victims.length} of ${st.instances.length} instances for ${downSeconds}s.`,
+    );
   }
 
   flushCache(nodeId: string): void {
@@ -162,7 +179,8 @@ export class Simulation {
   step(dt: number): SimSnapshot {
     this.t += dt;
     const t = this.t;
-    const nodes = this.design.nodes;
+    for (const [id, override] of this.overrides) if (override.until <= t) this.overrides.delete(id);
+    const nodes = this.design.nodes.map((n) => this.effective(n));
     const byId = new Map(nodes.map((n) => [n.id, n]));
 
     for (const node of nodes) {
@@ -182,7 +200,7 @@ export class Simulation {
     const metrics: Record<string, NodeMetrics> = {};
     const own = new Map<string, { success: number; latency: number; p99: number }>();
 
-    const offered = this.traffic.peakRps * trafficMultiplier(this.traffic.shape, t);
+    const offered = this.script ? Math.max(0, this.script(t)) : this.traffic.peakRps * trafficMultiplier(this.traffic.shape, t);
     const clientNodes = nodes.filter((n) => n.kind === 'clients');
     let attempted = 0;
 
@@ -838,6 +856,11 @@ export class Simulation {
         }
       }
     }
+  }
+
+  private effective(node: NodeSpec): NodeSpec {
+    const override = this.overrides.get(node.id);
+    return override ? { ...node, params: { ...node.params, ...override.params } } : node;
   }
 
   private cpuOnly(node: NodeSpec, m: NodeMetrics): number {

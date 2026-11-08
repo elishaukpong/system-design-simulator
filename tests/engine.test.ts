@@ -252,4 +252,46 @@ describe('Simulation', () => {
     expect(sim.events.some((e) => e.message.includes('autoscaling'))).toBe(true);
     expect(snap.nodes.app.totalInstances).toBeGreaterThan(1);
   });
+
+  it('a traffic script overrides the dial', () => {
+    const sim = new Simulation();
+    sim.setDesign(monolith({ instances: 4 }));
+    sim.setTraffic({ peakRps: 100, shape: 'steady' });
+    sim.setScript((t) => t * 10);
+    let snap!: SimSnapshot;
+    for (let i = 0; i < 50; i++) snap = sim.step(0.1);
+
+    expect(snap.global.offeredRps).toBeCloseTo(50, 5);
+  });
+
+  it('parameter overrides apply for their window and then expire', () => {
+    const d = design(
+      [
+        ['clients', 'clients', { staticPct: 0, writePct: 100, retries: 0 }],
+        ['app', 'app', { instances: 10, externalCallPct: 100 }],
+        ['ext', 'external', { failurePct: 0, rateLimitRps: 10000 }],
+      ],
+      [
+        ['clients', 'app'],
+        ['app', 'ext'],
+      ],
+    );
+    const { sim } = run(d, 50, 2);
+    sim.overrideParams('ext', { failurePct: 80 }, 5);
+    const during = sim.step(0.1).global.errorRate;
+    for (let i = 0; i < 60; i++) sim.step(0.1);
+    const after = sim.step(0.1).global.errorRate;
+
+    expect(during).toBeGreaterThan(0.7);
+    expect(after).toBeLessThan(0.01);
+  });
+
+  it('a partial kill takes down a share of instances, not the node', () => {
+    const { sim } = run(monolith({ instances: 6 }), 100, 2);
+    sim.kill('app', 0.5, 20);
+    const snap = sim.step(0.1);
+
+    expect(snap.nodes.app.healthyInstances).toBe(3);
+    expect(snap.nodes.app.status).not.toBe('down');
+  });
 });
