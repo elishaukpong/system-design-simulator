@@ -38,6 +38,7 @@ export interface EdgeSpec {
   id: string;
   from: string;
   to: string;
+  latencyMs?: number;
 }
 
 export interface Design {
@@ -70,6 +71,7 @@ export type PressureReason =
   | 'write-ceiling';
 
 export interface NodeMetrics {
+  region: string;
   inRps: number;
   inByClass: ClassFlow;
   servedRps: number;
@@ -102,6 +104,8 @@ export type BreakerState = 'closed' | 'open' | 'half-open';
 export interface EdgeMetrics {
   flow: ClassFlow;
   failFrac: number;
+  rtt: number;
+  crossRegion: boolean;
 }
 
 export interface SimEvent {

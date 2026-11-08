@@ -119,6 +119,13 @@ export class Store {
     this.emitDesign();
   }
 
+  setEdgeLatency(id: string, ms: number): void {
+    const edge = this.edge(id);
+    if (this.editingLocked || !edge) return;
+    edge.latencyMs = ms;
+    this.emitDesign();
+  }
+
   reverseEdge(id: string): void {
     const edge = this.edge(id);
     if (this.editingLocked || !edge) return;

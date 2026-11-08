@@ -316,4 +316,30 @@ describe('Simulation', () => {
     expect(snap.nodes.cache.inRps).toBeGreaterThan(1000);
     expect(snap.nodes.db.inRps).toBeLessThan(600);
   });
+
+  it('users pay last-mile latency to reach the entry point', () => {
+    const { snap } = run(monolith({ instances: 4 }), 10, 3);
+
+    expect(snap.global.p50).toBeGreaterThan(0.03);
+  });
+
+  it('a database in another region adds its round trip to every query', () => {
+    const local = monolith({ instances: 4, searchPct: 0 });
+    const remote = monolith({ instances: 4, searchPct: 0 });
+    remote.nodes.find((n) => n.id === 'db')!.z = 96;
+    const near = run(local, 50, 5).snap.global.p50;
+    const far = run(remote, 50, 5).snap.global.p50;
+
+    expect(far - near).toBeGreaterThan(0.06);
+    expect(far - near).toBeLessThan(0.09);
+  });
+
+  it('extra latency on a connection is added to the path', () => {
+    const slow = monolith({ instances: 4, searchPct: 0 });
+    slow.edges.find((e) => e.to === 'db')!.latencyMs = 200;
+    const base = run(monolith({ instances: 4, searchPct: 0 }), 50, 5).snap.global.p50;
+    const withHop = run(slow, 50, 5).snap.global.p50;
+
+    expect(withHop - base).toBeGreaterThan(0.15);
+  });
 });

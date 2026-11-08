@@ -49,10 +49,33 @@ export class Inspector {
       const from = this.store.node(edge.from)!;
       const to = this.store.node(edge.to)!;
       this.live = h('div');
+      const extra = edge.latencyMs ?? 0;
+      const extraValue = h('span', { class: 'field-value' }, `${extra} ms`);
+      const extraSlider = h('input', {
+        type: 'range',
+        min: '0',
+        max: '500',
+        step: '5',
+        value: String(extra),
+        disabled: this.store.editingLocked,
+        on: {
+          input: () => {
+            extraValue.textContent = `${extraSlider.value} ms`;
+            this.store.setEdgeLatency(edge.id, Number(extraSlider.value));
+          },
+        },
+      });
       this.root.append(
         h('h2', { class: 'panel-title' }, 'Connection'),
         h('div', { class: 'insp-head' }, h('strong', {}, `${from.name} → ${to.name}`)),
         this.live,
+        h(
+          'div',
+          { class: 'field' },
+          h('div', { class: 'field-row' }, h('span', { class: 'field-label' }, 'Extra latency'), extraValue),
+          extraSlider,
+          h('div', { class: 'field-help' }, 'On top of the network. A chatty protocol, TLS without reuse, a slow proxy.'),
+        ),
         h(
           'div',
           { class: 'actions' },
@@ -112,6 +135,8 @@ export class Inspector {
           h('dd', {}, `${formatRps(total)} rps`),
           h('dt', {}, 'Failing downstream'),
           h('dd', {}, `${((em?.failFrac ?? 0) * 100).toFixed(1)}%`),
+          h('dt', {}, em?.crossRegion ? 'Round trip (cross-region)' : 'Round trip'),
+          h('dd', {}, `${Math.round((em?.rtt ?? 0) * 1000)} ms`),
         ),
         bars,
         h('div', { class: 'legend' }, ...TRAFFIC_CLASSES.map((cls) => h('span', {}, h('i', { style: `background:var(--${cls})` }), `${cls} ${formatRps(flow?.[cls] ?? 0)}`))),

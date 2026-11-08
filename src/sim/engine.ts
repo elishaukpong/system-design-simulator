@@ -1,5 +1,6 @@
 import { boolParam, numberParam } from './catalog';
 import { isAutoscaled, profileFor, SECONDS_PER_MONTH, type Profile } from './profiles';
+import { EDGE_POP_RTT, LAST_MILE_RTT, regionAt, regionRtt, type RegionId } from './regions';
 import {
   TRAFFIC_CLASSES,
   totalFlow,
@@ -28,6 +29,7 @@ interface Instance {
 
 interface NodeState {
   instances: Instance[];
+  activeRegion: RegionId | null;
   stress: number;
   backlog: number;
   warmth: number;
@@ -250,6 +252,14 @@ export class Simulation {
       }
     }
 
+    const rtt = new Map<string, number>();
+    for (const edge of this.design.edges) {
+      const from = byId.get(edge.from);
+      const to = byId.get(edge.to);
+      if (from && to) rtt.set(edge.id, this.edgeRtt(from, to, edge.latencyMs ?? 0));
+    }
+    const hop = (edgeId: string | null) => (edgeId ? rtt.get(edgeId) ?? 0 : 0);
+
     const S = new Map<string, ClassFlow>();
     const L = new Map<string, ClassFlow>();
     const P = new Map<string, ClassFlow>();
@@ -273,9 +283,9 @@ export class Simulation {
             continue;
           }
           down += route.frac * (S.get(route.child)?.[cls] ?? 0);
-          const childLatency = L.get(route.child)?.[cls] ?? 0;
+          const childLatency = (L.get(route.child)?.[cls] ?? 0) + hop(route.edgeId);
           lat += route.frac * childLatency;
-          const childP99 = P.get(route.child)?.[cls] ?? 0;
+          const childP99 = (P.get(route.child)?.[cls] ?? 0) + hop(route.edgeId);
           worstRouteP99 = Math.max(worstRouteP99, route.frac >= 0.05 ? childP99 : route.frac * childLatency);
         }
         if (plan.async) down = 1;
@@ -284,9 +294,9 @@ export class Simulation {
         for (const call of plan.calls) {
           const childSuccess = S.get(call.child)?.[cls] ?? 0;
           if (call.fatal) callSuccess *= 1 - call.frac * (1 - childSuccess);
-          const childLatency = L.get(call.child)?.[cls] ?? 0;
+          const childLatency = (L.get(call.child)?.[cls] ?? 0) + hop(call.edgeId);
           lat += call.frac * childLatency;
-          callP99 += call.frac >= 0.05 ? P.get(call.child)?.[cls] ?? 0 : call.frac * childLatency;
+          callP99 += call.frac >= 0.05 ? (P.get(call.child)?.[cls] ?? 0) + hop(call.edgeId) : call.frac * childLatency;
         }
         downstream[cls] = callSuccess * down;
         s[cls] = self.success * downstream[cls];
@@ -320,9 +330,13 @@ export class Simulation {
     for (const edge of this.design.edges) {
       const flow = edgeFlow.get(edge.id) ?? zeroFlow();
       const childSuccess = S.get(edge.to);
+      const from = byId.get(edge.from);
+      const to = byId.get(edge.to);
       edges[edge.id] = {
         flow,
         failFrac: childSuccess && totalFlow(flow) > 0 ? 1 - weighted(childSuccess, flow) : 0,
+        rtt: rtt.get(edge.id) ?? 0,
+        crossRegion: !!from && !!to && from.kind !== 'clients' && this.regionOf(from) !== this.regionOf(to),
       };
     }
 
@@ -415,6 +429,7 @@ export class Simulation {
     let drain: Array<[string, string, number]> | null = null;
 
     const metrics: NodeMetrics = {
+      region: this.regionOf(node),
       inRps,
       inByClass: { ...inF },
       servedRps: 0,
@@ -859,6 +874,17 @@ export class Simulation {
     }
   }
 
+  regionOf(node: NodeSpec): RegionId {
+    return this.states.get(node.id)?.activeRegion ?? regionAt(node.z);
+  }
+
+  private edgeRtt(from: NodeSpec, to: NodeSpec, extraMs: number): number {
+    const extra = extraMs / 1000;
+    if (from.kind === 'clients' && to.kind === 'cdn') return EDGE_POP_RTT + extra;
+    const network = regionRtt(this.regionOf(from), this.regionOf(to));
+    return (from.kind === 'clients' ? LAST_MILE_RTT + network : network) + extra;
+  }
+
   private effective(node: NodeSpec): NodeSpec {
     const override = this.overrides.get(node.id);
     return override ? { ...node, params: { ...node.params, ...override.params } } : node;
@@ -972,6 +998,7 @@ export class Simulation {
     if (!st) {
       st = {
         instances: [],
+        activeRegion: null,
         stress: 0,
         backlog: 0,
         warmth: 0,
