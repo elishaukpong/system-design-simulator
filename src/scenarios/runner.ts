@@ -102,6 +102,9 @@ export class ScenarioRun {
       retryAmplification: g.retryAmplification,
       queueLag,
       replicationLag,
+      deadLettered: g.deadLetteredTotal,
+      lost: g.lostTotal,
+      duplicates: g.duplicatesTotal,
       binding: binding ? { nodeId: binding.nodeId, name: binding.name, reason: binding.reason } : null,
     };
   }

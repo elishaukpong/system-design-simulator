@@ -94,6 +94,9 @@ export interface NodeMetrics {
   replicationLag?: number;
   queueDepth?: number;
   queueLagSeconds?: number;
+  dlqDepth?: number;
+  inFlight?: number;
+  retryRps?: number;
   breakerState?: BreakerState;
   hotShardShare?: number;
   costPerMonth: number;
@@ -127,6 +130,9 @@ export interface GlobalMetrics {
   p99: number;
   costPerMonth: number;
   asyncFailedRps: number;
+  deadLetteredTotal: number;
+  lostTotal: number;
+  duplicatesTotal: number;
 }
 
 export interface SimSnapshot {

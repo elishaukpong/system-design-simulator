@@ -51,6 +51,12 @@ export function describeCriterion(criterion: Criterion): { label: string; target
       return { label: 'Replica staleness', target: `≤ ${criterion.maxS}s` };
     case 'retryAmplification':
       return { label: 'Retry amplification', target: `≤ ${criterion.max}×` };
+    case 'dataLoss':
+      return { label: 'Jobs lost', target: criterion.max === 0 ? 'none' : `≤ ${criterion.max}` };
+    case 'duplicates':
+      return { label: 'Duplicated work', target: criterion.max === 0 ? 'none' : `≤ ${criterion.max}` };
+    case 'deadLettered':
+      return { label: 'Dead-lettered jobs', target: criterion.max === 0 ? 'none' : `≤ ${criterion.max}` };
     case 'chaosAvailability':
       return { label: `Availability during chaos (${criterion.from}–${criterion.to}s)`, target: `≥ ${pct(criterion.min, 1)}` };
   }
@@ -93,6 +99,18 @@ function evaluate({ criterion, role }: GradedCriterion, samples: Sample[]): Crit
       const value = Math.max(1, ...samples.map((s) => s.retryAmplification));
       return result(`${value.toFixed(2)}× worst`, value <= criterion.max);
     }
+    case 'dataLoss': {
+      const value = last(samples)?.lost ?? 0;
+      return result(Math.round(value).toLocaleString(), value <= criterion.max + 0.5);
+    }
+    case 'duplicates': {
+      const value = last(samples)?.duplicates ?? 0;
+      return result(Math.round(value).toLocaleString(), value <= criterion.max + 0.5);
+    }
+    case 'deadLettered': {
+      const value = last(samples)?.deadLettered ?? 0;
+      return result(Math.round(value).toLocaleString(), value <= criterion.max + 0.5);
+    }
     case 'chaosAvailability': {
       const window = samples.filter((s) => s.t >= criterion.from && s.t <= criterion.to);
       const value = availability(window);
@@ -133,6 +151,11 @@ function tradeoffs(design: Design, samples: Sample[]): Tradeoff[] {
     out.push({ text: `Rate limiting: you chose to turn users away rather than fall over. At worst ${Math.round(worstShed * 100)}% of requests got a 429.`, curriculum: 'Day 36 · Rate limiting' });
   if (has('breaker').length)
     out.push({ text: 'Circuit breaker: while it is open, users get a fast failure instead of a slow one. Decide what they see.', curriculum: 'Day 34 · Graceful degradation' });
+  const queues = has('queue');
+  if (queues.some((q) => !boolParam(q.params, 'dlq', true)))
+    out.push({ text: 'No dead-letter queue: a job that fails every attempt is gone, and nobody is told.', curriculum: 'Day 24 · Queues' });
+  if (queues.length && has('workers').some((w) => !boolParam(w.params, 'idempotent', false)))
+    out.push({ text: 'Retries without idempotency: when a call worked but the reply was lost, the retry does the work again.', curriculum: 'Day 45 · Idempotency keys' });
   if (has('search').length)
     out.push({ text: 'Search index: results trail the database by the indexing delay.', curriculum: 'Day 20 · Search' });
   if (design.nodes.some((n) => (n.kind === 'app' || n.kind === 'workers') && boolParam(n.params, 'autoscale', false)))
@@ -151,6 +174,10 @@ function tradeoffs(design: Design, samples: Sample[]): Tradeoff[] {
 export function availability(samples: Sample[]): number {
   const offered = sum(samples.map((s) => s.offered));
   return offered > 0 ? sum(samples.map((s) => s.success)) / offered : 1;
+}
+
+function last<T>(values: T[]): T | undefined {
+  return values[values.length - 1];
 }
 
 function sum(values: number[]): number {

@@ -157,10 +157,10 @@ export class Inspector {
       return;
     }
     const advice = this.advice(node, m);
-    this.live.replaceChildren(this.stats(node, m), ...(advice ? [advice] : []));
+    this.live.replaceChildren(this.stats(node, m, snap!), ...(advice ? [advice] : []));
   }
 
-  private stats(node: NodeSpec, m: NodeMetrics): HTMLElement {
+  private stats(node: NodeSpec, m: NodeMetrics, snap: SimSnapshot): HTMLElement {
     const rows: Array<[string, string]> = [
       ['Region', regionLabel(m.region as RegionId)],
       ['Incoming', `${formatRps(m.inRps)} rps`],
@@ -177,6 +177,12 @@ export class Inspector {
     if (m.hitRatio !== undefined) rows.push(['Hit ratio', `${Math.round(m.hitRatio * 100)}%`]);
     if (m.replicationLag !== undefined) rows.push(['Replication lag', `${m.replicationLag.toFixed(2)}s`]);
     if (m.queueDepth !== undefined) rows.push(['Queue depth', formatRps(m.queueDepth)], ['Consumer lag', formatSeconds(m.queueLagSeconds ?? 0)]);
+    if (m.inFlight) rows.push(['Waiting to retry', formatRps(m.inFlight)]);
+    if (m.dlqDepth) rows.push(['Dead-letter queue', formatRps(m.dlqDepth)]);
+    if (node.kind === 'queue' || node.kind === 'workers') {
+      if (snap.global.lostTotal > 0.5) rows.push(['Jobs lost', formatRps(snap.global.lostTotal)]);
+      if (snap.global.duplicatesTotal > 0.5) rows.push(['Duplicated work', formatRps(snap.global.duplicatesTotal)]);
+    }
     if (m.breakerState) rows.push(['Breaker', m.breakerState.toUpperCase()]);
     if (m.hotShardShare !== undefined) rows.push(['Hottest shard share', `${Math.round(m.hotShardShare * 100)}%`]);
     rows.push(['Cost', `$${Math.round(m.costPerMonth).toLocaleString()}/mo`]);

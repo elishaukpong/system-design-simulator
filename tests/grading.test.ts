@@ -7,7 +7,7 @@ const scenario = {
 } as unknown as Scenario;
 
 function sample(t: number, offered: number, success: number, p99: number): Sample {
-  return { t, offered, success, errorRate: 1 - success / offered, shedRate: 0, p99, cost: 0, retryAmplification: 1, queueLag: 0, replicationLag: 0, binding: null };
+  return { t, offered, success, errorRate: 1 - success / offered, shedRate: 0, p99, cost: 0, retryAmplification: 1, queueLag: 0, replicationLag: 0, deadLettered: 0, lost: 0, duplicates: 0, binding: null };
 }
 
 describe('grading', () => {

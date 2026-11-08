@@ -29,6 +29,12 @@ interface Instance {
 
 interface NodeState {
   instances: Instance[];
+  buckets: number[];
+  inFlight: Array<{ readyAt: number; attempt: number; amount: number }>;
+  dlqDepth: number;
+  dlqWarned: boolean;
+  lostWarned: boolean;
+  lastSuccess: number;
   activeRegion: RegionId | null;
   lagFloor: number;
   stress: number;
@@ -86,6 +92,7 @@ const SCALE_EVAL_SECONDS = 15;
 const DOWN_LATENCY = 0.5;
 const SEARCH_AMPLIFICATION = 4;
 const REPLAY_COST = 0.5;
+const AMBIGUOUS_FAILURE = 0.3;
 
 const PASS_STATIC: ComponentKind[] = ['objectStorage', 'cdn', 'dns', 'gateway', 'lb', 'breaker', 'app'];
 const PASS_DYNAMIC: ComponentKind[] = ['dns', 'gateway', 'lb', 'breaker', 'app', 'cdn', 'workers', 'queue'];
@@ -114,6 +121,8 @@ export class Simulation {
   private last: SimSnapshot | null = null;
   private script: ((t: number) => number) | null = null;
   private overrides = new Map<string, { params: NodeSpec['params']; until: number }>();
+  private totals = { deadLettered: 0, lost: 0, duplicates: 0 };
+  private tickAsyncFailed = 0;
 
   setDesign(design: Design): void {
     this.design = design;
@@ -143,6 +152,7 @@ export class Simulation {
     this.events = [];
     this.states.clear();
     this.overrides.clear();
+    this.totals = { deadLettered: 0, lost: 0, duplicates: 0 };
     this.last = null;
     for (const node of this.design.nodes) {
       this.syncInstances(node, this.stateFor(node));
@@ -213,6 +223,7 @@ export class Simulation {
   step(dt: number): SimSnapshot {
     this.t += dt;
     const t = this.t;
+    this.tickAsyncFailed = 0;
     for (const [id, override] of this.overrides) if (override.until <= t) this.overrides.delete(id);
     const nodes = this.design.nodes.map((n) => this.effective(n));
     const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -297,7 +308,6 @@ export class Simulation {
     const S = new Map<string, ClassFlow>();
     const L = new Map<string, ClassFlow>();
     const P = new Map<string, ClassFlow>();
-    let asyncFailed = 0;
 
     for (const id of [...order].reverse()) {
       const self = own.get(id)!;
@@ -356,7 +366,7 @@ export class Simulation {
       st.pathLatency = { ...l };
 
       const node = byId.get(id)!;
-      if (node.kind === 'workers') asyncFailed += m.servedRps * (1 - m.successFrac);
+      if (node.kind === 'workers' && m.servedRps > 0) st.lastSuccess = m.successFrac;
       if (node.kind === 'breaker' && m.servedRps > 0) st.downstreamFail = 1 - weighted(downstream, m.inByClass);
     }
 
@@ -435,7 +445,10 @@ export class Simulation {
       p50: attempted > 0 ? latencyWeighted / attempted : 0,
       p99,
       costPerMonth: cost,
-      asyncFailedRps: asyncFailed,
+      asyncFailedRps: this.tickAsyncFailed,
+      deadLetteredTotal: this.totals.deadLettered,
+      lostTotal: this.totals.lost,
+      duplicatesTotal: this.totals.duplicates,
     };
 
     this.last = { global, nodes: metrics, edges };
@@ -624,18 +637,74 @@ export class Simulation {
   ) {
     const inRps = totalFlow(inF);
     const maxDepth = numberParam(node.params, 'maxDepth', 1_000_000);
+    const maxReceives = Math.max(1, Math.round(numberParam(node.params, 'maxReceives', 3)));
+    const visibility = numberParam(node.params, 'visibilityS', 30);
+    const deadLetterQueue = boolParam(node.params, 'dlq', true);
     const accepted = Math.min(inRps, prof.unitCapacity);
-    let depth = st.depth + accepted * dt;
+    while (st.buckets.length < maxReceives) st.buckets.push(0);
+    while (st.buckets.length > maxReceives) st.buckets[maxReceives - 1] += st.buckets.pop()!;
+
+    for (const entry of st.inFlight) {
+      if (entry.readyAt <= this.t) st.buckets[Math.min(entry.attempt, maxReceives - 1)] += entry.amount;
+    }
+    st.inFlight = st.inFlight.filter((entry) => entry.readyAt > this.t);
+    st.buckets[0] += accepted * dt;
 
     const workers = children.filter((c) => c.kind === 'workers');
     let workersCapacity = 0;
+    let failure = 0;
     for (const w of workers) workersCapacity += this.stateFor(byId.get(w.child)!).capacityRps;
-    const drainRate = Math.min(workersCapacity, depth / dt);
-    depth -= drainRate * dt;
+    for (const w of workers) {
+      const wState = this.stateFor(byId.get(w.child)!);
+      const share = workersCapacity > 0 ? wState.capacityRps / workersCapacity : 1 / workers.length;
+      failure += share * (1 - wState.lastSuccess);
+    }
+    const idempotent = workers.every((w) => boolParam(byId.get(w.child)!.params, 'idempotent', false));
+
+    const visible = st.buckets.reduce((a, b) => a + b, 0);
+    const drainRate = Math.min(workersCapacity, visible / dt);
+    const drained = drainRate * dt;
+    let retried = 0;
+    let exhausted = 0;
+    if (visible > 0 && drained > 0) {
+      const takes = st.buckets.map((b) => (drained * b) / visible);
+      takes.forEach((take, attempt) => {
+        st.buckets[attempt] -= take;
+        const failed = take * failure;
+        if (failed <= 0) return;
+        if (attempt < maxReceives - 1) {
+          st.inFlight.push({ readyAt: this.t + visibility, attempt: attempt + 1, amount: failed });
+          retried += failed;
+        } else {
+          exhausted += failed;
+        }
+      });
+    }
+
+    if (exhausted > 0 && deadLetterQueue) {
+      st.dlqDepth += exhausted;
+      this.totals.deadLettered += exhausted;
+      if (!st.dlqWarned) {
+        this.log(node.id, 'warn', `${node.name}: jobs failed ${maxReceives} times and moved to the dead-letter queue.`);
+        st.dlqWarned = true;
+      }
+    } else if (exhausted > 0) {
+      this.totals.lost += exhausted;
+      if (!st.lostWarned) {
+        this.log(node.id, 'error', `${node.name}: jobs failed ${maxReceives} times and were DROPPED. There is no dead-letter queue.`);
+        st.lostWarned = true;
+      }
+    }
+    if (!idempotent) this.totals.duplicates += retried * AMBIGUOUS_FAILURE;
+    this.tickAsyncFailed += exhausted / dt;
+
+    const inFlight = st.inFlight.reduce((a, e) => a + e.amount, 0);
+    let depth = st.buckets.reduce((a, b) => a + b, 0) + inFlight;
 
     let overflow = 0;
     if (depth > maxDepth) {
       overflow = (depth - maxDepth) / dt;
+      st.buckets[0] = Math.max(0, st.buckets[0] - overflow * dt);
       depth = maxDepth;
       if (!st.queueFullWarned) {
         this.log(node.id, 'error', `${node.name} is full. New writes are rejected.`);
@@ -645,6 +714,9 @@ export class Simulation {
       st.queueFullWarned = false;
     }
     st.depth = depth;
+    metrics.dlqDepth = st.dlqDepth;
+    metrics.inFlight = inFlight;
+    metrics.retryRps = retried / dt;
 
     const drain: Array<[string, string, number]> = [];
     for (const w of workers) {
@@ -1053,6 +1125,12 @@ export class Simulation {
     if (!st) {
       st = {
         instances: [],
+        buckets: [0],
+        inFlight: [],
+        dlqDepth: 0,
+        dlqWarned: false,
+        lostWarned: false,
+        lastSuccess: 1,
         activeRegion: null,
         lagFloor: 0,
         stress: 0,

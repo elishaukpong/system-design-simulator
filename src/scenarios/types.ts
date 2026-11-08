@@ -11,6 +11,9 @@ export type Criterion =
   | { type: 'queueLag'; maxS: number }
   | { type: 'replicationLag'; maxS: number }
   | { type: 'retryAmplification'; max: number }
+  | { type: 'dataLoss'; max: number }
+  | { type: 'duplicates'; max: number }
+  | { type: 'deadLettered'; max: number }
   | { type: 'chaosAvailability'; min: number; from: number; to: number };
 
 export interface GradedCriterion {
@@ -60,6 +63,9 @@ export interface Sample {
   retryAmplification: number;
   queueLag: number;
   replicationLag: number;
+  deadLettered: number;
+  lost: number;
+  duplicates: number;
   binding: { nodeId: string; name: string; reason: string | null } | null;
 }
 

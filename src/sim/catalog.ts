@@ -125,6 +125,7 @@ export const CATALOG: Record<ComponentKind, ComponentDef> = {
       { key: 'autoscale', label: 'Autoscale on queue depth', type: 'boolean', default: false },
       { key: 'maxInstances', label: 'Autoscale max', type: 'number', min: 1, max: 200, step: 1, default: 20 },
       { key: 'externalCallPct', label: 'Jobs calling external API', type: 'number', min: 0, max: 100, step: 5, default: 30, unit: '%' },
+      { key: 'idempotent', label: 'Idempotent jobs', type: 'boolean', default: false, help: 'Off: a retry after an ambiguous failure (it worked, but the reply was lost) does the work twice.' },
     ],
   },
   cache: {
@@ -210,6 +211,9 @@ export const CATALOG: Record<ComponentKind, ComponentDef> = {
     blurb: 'Accepts writes now, processes them later. Turns a spike into a backlog instead of an outage.',
     params: [
       { key: 'maxDepth', label: 'Max depth', type: 'number', min: 1000, max: 10000000, step: 1000, default: 1000000 },
+      { key: 'maxReceives', label: 'Max receives', type: 'number', min: 1, max: 10, step: 1, default: 3, help: 'How many times a job is attempted before it gives up.' },
+      { key: 'visibilityS', label: 'Visibility timeout', type: 'number', min: 0, max: 300, step: 5, default: 30, unit: 's', help: 'How long a failed job waits before it is retried. Too short and retries burn out during an outage.' },
+      { key: 'dlq', label: 'Dead-letter queue', type: 'boolean', default: true, help: 'Off: jobs that exhaust their retries are dropped for good.' },
     ],
   },
   breaker: {
