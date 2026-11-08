@@ -383,10 +383,34 @@ function openJsonDialog(mode: 'export' | 'import'): void {
 let last = performance.now();
 let uiTimer = 0;
 
+const IDLE_AFTER_MS = 2000;
+const IDLE_FRAME_MS = 500;
+let lastActivity = performance.now();
+let lastIdleFrame = 0;
+const wake = () => {
+  lastActivity = performance.now();
+};
+for (const event of ['pointermove', 'pointerdown', 'wheel', 'keydown'] as const) window.addEventListener(event, wake, { passive: true });
+store.onDesign(wake);
+store.onSelection(wake);
+store.onTraffic(wake);
+
+function idleSkip(now: number, animating: boolean): boolean {
+  if (animating || now - lastActivity < IDLE_AFTER_MS) return false;
+  if (now - lastIdleFrame < IDLE_FRAME_MS) return true;
+  lastIdleFrame = now;
+  return false;
+}
+
 function tick(now: number): void {
   const frameDt = Math.min(0.1, (now - last) / 1000);
   last = now;
   let simAdvanced = 0;
+
+  if (idleSkip(now, running || !!replay?.playing)) {
+    requestAnimationFrame(tick);
+    return;
+  }
 
   if (running) {
     simAccumulator += frameDt * speed;
