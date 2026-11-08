@@ -61,7 +61,7 @@ export function diagnose(design: Design, snap: SimSnapshot): Diagnosis {
   const causes = pressures.filter((p) => p.symptomOf === null);
   const binding = causes[0] && causes[0].score >= BINDING_THRESHOLD ? causes[0] : null;
   const rest = causes.filter((p) => p !== binding && p.reason !== 'rate-limit');
-  const next = binding ? rest[0] ?? null : null;
+  const next = binding && rest[0] && rest[0].score >= 0.3 ? rest[0] : null;
   const closestWall = binding ? null : rest[0] ?? null;
   const symptoms = pressures.filter((p) => p.symptomOf !== null && p.score >= 0.7);
 
@@ -78,8 +78,6 @@ function scoreFor(m: NodeMetrics): number {
       return Math.max(m.utilization, 0.8 + (m.replicationLag ?? 0) / 10);
     case 'backlog':
       return Math.max(m.utilization, 0.75 + Math.min(0.5, (m.queueLagSeconds ?? 0) / 120));
-    case 'cold-cache':
-      return Math.max(m.utilization, 0.8);
     case 'breaker-open':
       return 0.85;
     default:

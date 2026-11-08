@@ -108,7 +108,7 @@ export const CATALOG: Record<ComponentKind, ComponentDef> = {
       { key: 'autoscale', label: 'Autoscaling', type: 'boolean', default: false },
       { key: 'maxInstances', label: 'Autoscale max', type: 'number', min: 1, max: 200, step: 1, default: 20 },
       { key: 'externalCallPct', label: 'Writes calling external API', type: 'number', min: 0, max: 100, step: 5, default: 30, unit: '%', help: 'Only applies if an External API is connected.' },
-      { key: 'searchPct', label: 'Reads that are searches', type: 'number', min: 0, max: 100, step: 5, default: 20, unit: '%', help: 'Go to Search if connected, otherwise hit the DB as slow LIKE queries.' },
+      { key: 'searchPct', label: 'Reads that are searches', type: 'number', min: 0, max: 100, step: 5, default: 20, unit: '%', help: 'Go to Search if connected. Otherwise each one hits the DB as a LIKE query costing 4 normal queries.' },
     ],
   },
   workers: {

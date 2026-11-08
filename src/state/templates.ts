@@ -11,6 +11,8 @@ interface Template {
   edges: Array<[string, string]>;
 }
 
+const TEMPLATE_SPREAD = 1.5;
+
 const TEMPLATES: Template[] = [
   {
     id: 'blank',
@@ -109,8 +111,8 @@ export function buildTemplate(id: string): SavedState {
         id: nodeId,
         kind,
         name: name ?? defaultName(kind, nodeId),
-        x,
-        z,
+        x: x * TEMPLATE_SPREAD,
+        z: z * TEMPLATE_SPREAD,
         params: { ...defaultParams(kind), ...params },
       })),
       edges: template.edges.map(([from, to]) => ({ id: `${from}->${to}`, from, to })),
