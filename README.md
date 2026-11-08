@@ -15,6 +15,8 @@ npm run build
 
 ## Play it
 
+A guided tour starts on the first visit, and the **?** next to the logo brings it back. Entering a scenario for the first time adds a short tour of how tests work.
+
 1. Load a template (or start blank), or pick components from the left and click the grid to place them.
 2. **Shift-drag** from one component to another to connect them. Traffic flows in the arrow's direction.
 3. Set the traffic dial and shape (steady, ramp, spikes, daily wave), press **Run**.
@@ -78,6 +80,10 @@ Every component is a queue: utilisation = load / capacity, latency climbs as uti
 - **Search**: without a search index, searches hit the DB as LIKE queries costing 4× a normal query.
 
 Capacities and prices are rough, order-of-magnitude numbers (`src/sim/profiles.ts`). They are for building intuition about shapes and ratios, not for capacity planning.
+
+## Dependencies
+
+`shepherd.js` is pinned to **11.2.0**, the last MIT-licensed release. From 12 on it is AGPL-3.0 or commercial. `npm audit` flags its `deepmerge` dependency for prototype poisoning; the tour only merges its own hard-coded step options, so that path is not reachable here.
 
 ## Layout
 

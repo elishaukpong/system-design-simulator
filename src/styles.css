@@ -717,6 +717,125 @@ dialog textarea {
   color: var(--muted);
 }
 
+/* Guided tour */
+.template-select {
+  max-width: 150px;
+}
+
+.help-button {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  font-weight: 700;
+  color: #bae6fd;
+}
+
+.shepherd-modal-overlay-container.shepherd-modal-is-visible {
+  opacity: 0.6;
+}
+
+.shepherd-element.sds-tour {
+  max-width: 360px;
+  background: var(--panel);
+  border: 1px solid #2c3a5a;
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+  font: 13px/1.5 Inter, system-ui, sans-serif;
+}
+
+.sds-tour .shepherd-content {
+  border-radius: 12px;
+}
+
+.sds-tour .shepherd-header {
+  background: transparent !important;
+  padding: 14px 16px 0;
+}
+
+.sds-tour .shepherd-title {
+  color: var(--text);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.sds-tour .shepherd-cancel-icon {
+  color: var(--muted);
+}
+
+.sds-tour .shepherd-cancel-icon:hover {
+  color: var(--text);
+}
+
+.sds-tour .shepherd-text {
+  color: #cbd5e1;
+  padding: 8px 16px 4px;
+  font-size: 13px;
+}
+
+.sds-tour .shepherd-text p {
+  margin: 0 0 8px;
+}
+
+.sds-tour .tour-muted {
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.sds-tour kbd {
+  font: 11px var(--mono);
+  padding: 0 5px;
+  border: 1px solid #2c3a5a;
+  border-radius: 4px;
+  background: #111a2d;
+  color: var(--text);
+}
+
+.sds-tour .tour-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin: 0 3px 0 6px;
+}
+
+.sds-tour .shepherd-footer {
+  padding: 8px 16px 14px;
+  gap: 6px;
+}
+
+.sds-tour .shepherd-button {
+  background: var(--accent);
+  color: #04121d;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 6px 12px;
+  margin: 0;
+}
+
+.sds-tour .shepherd-button:not(:disabled):hover {
+  background: #7dd3fc;
+  color: #04121d;
+}
+
+.sds-tour .shepherd-button.shepherd-button-secondary {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+
+.sds-tour .shepherd-button.shepherd-button-secondary:not(:disabled):hover {
+  background: #18233b;
+  color: var(--text);
+}
+
+.shepherd-element.sds-tour .shepherd-arrow:before,
+.shepherd-element.sds-tour.shepherd-has-title[data-popper-placement^='bottom'] > .shepherd-arrow:before {
+  background-color: var(--panel) !important;
+  border: 1px solid #2c3a5a;
+}
+
 /* Scenarios */
 .scenarios-button {
   white-space: nowrap;

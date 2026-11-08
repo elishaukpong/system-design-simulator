@@ -16,6 +16,7 @@ import { Palette } from './ui/palette';
 import { Replay } from './ui/replay';
 import { BriefPanel, openScenarioPicker } from './ui/scenarios';
 import { Toolbar } from './ui/toolbar';
+import { startMainTour, startMainTourOnce, startScenarioTourOnce } from './ui/tour';
 
 const SIM_STEP = 0.1;
 const MAX_STEPS_PER_FRAME = 60;
@@ -57,6 +58,7 @@ const toolbar = new Toolbar(document.getElementById('toolbar')!, store, {
   fit: () => scene.fit(store.design),
   exportDesign: () => openJsonDialog('export'),
   importDesign: () => openJsonDialog('import'),
+  help: () => startMainTour(),
   openScenarios: () => {
     if (run) return;
     openScenarioPicker(loadProgress(), enterScenario);
@@ -121,6 +123,8 @@ if (savedMode && scenarioById(savedMode)) {
   syncChrome();
 }
 
+window.setTimeout(startMainTourOnce, 500);
+
 function scenarioLocks(s: Scenario) {
   return { ...s.lockedParams, clients: s.clients };
 }
@@ -143,6 +147,7 @@ function enterScenario(id: string): void {
   resetSim();
   scene.fit(store.design);
   renderBrief();
+  window.setTimeout(startScenarioTourOnce, 300);
 }
 
 function exitScenario(): void {

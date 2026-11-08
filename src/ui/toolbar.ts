@@ -15,6 +15,7 @@ export interface ToolbarActions {
   importDesign(): void;
   clear(): void;
   openScenarios(): void;
+  help(): void;
 }
 
 const SPEEDS = [1, 2, 5, 10];
@@ -34,6 +35,7 @@ export class Toolbar {
     const templateSelect = h(
       'select',
       {
+        class: 'template-select',
         title: 'Load a starter design',
         on: {
           change: () => {
@@ -64,7 +66,7 @@ export class Toolbar {
       h('option', { value: 'wave' }, 'Daily wave'),
     );
 
-    this.runButton = h('button', { class: 'primary', title: 'Run / pause (Space)', on: { click: () => actions.toggleRun() } }, '▶ Run');
+    this.runButton = h('button', { class: 'primary run-button', title: 'Run / pause (Space)', on: { click: () => actions.toggleRun() } }, '▶ Run');
     const speeds = h('div', { class: 'tool-group' });
     for (const speed of SPEEDS) {
       const button = h('button', { title: `Simulation speed ${speed}×`, on: { click: () => actions.setSpeed(speed) } }, `${speed}×`);
@@ -76,6 +78,7 @@ export class Toolbar {
 
     root.append(
       h('div', { class: 'brand', title: 'System Design Simulator' }, h('span', { class: 'brand-mark' }), 'SysSim'),
+      h('button', { class: 'help-button', title: 'Show the guided tour', on: { click: () => actions.help() } }, '?'),
       h('div', { class: 'tool-sep' }),
       h('button', { class: 'scenarios-button', title: 'Graded design challenges', on: { click: () => actions.openScenarios() } }, '🎯 Scenarios'),
       templateSelect,
