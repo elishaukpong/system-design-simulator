@@ -4,11 +4,13 @@ import { formatRps } from '../render/scene';
 import type { Store } from '../state/store';
 import type { NodeMetrics, NodeSpec, SimSnapshot } from '../sim/types';
 import { TRAFFIC_CLASSES, totalFlow } from '../sim/types';
+import { regionAt, regionLabel, type RegionId } from '../sim/regions';
 import { h, hex } from './dom';
 
 export interface InspectorActions {
   kill(id: string): void;
   flush(id: string): void;
+  killRegion(region: RegionId): void;
 }
 
 export class Inspector {
@@ -101,6 +103,10 @@ export class Inspector {
     this.live = h('div');
     const chaos = h('div', { class: 'actions' }, h('button', { class: 'danger', title: 'Kill every instance for 30s', on: { click: () => this.actions.kill(node.id) } }, '💥 Kill'));
     if (node.kind === 'cache') chaos.append(h('button', { title: 'Empty the cache', on: { click: () => this.actions.flush(node.id) } }, '🧹 Flush'));
+    if (node.kind !== 'clients') {
+      const region = regionAt(node.z);
+      chaos.append(h('button', { class: 'danger', title: `Take every component in ${region} down for 60s`, on: { click: () => this.actions.killRegion(region) } }, `🌩 Kill ${region}`));
+    }
     if (!node.locked && !this.store.editingLocked) chaos.append(h('button', { class: 'danger', on: { click: () => this.store.removeNode(node.id) } }, 'Delete'));
     if (node.locked) chaos.append(h('span', { class: 'muted small' }, '🔒 Part of the scenario. You cannot change it.'));
 
@@ -156,6 +162,7 @@ export class Inspector {
 
   private stats(node: NodeSpec, m: NodeMetrics): HTMLElement {
     const rows: Array<[string, string]> = [
+      ['Region', regionLabel(m.region as RegionId)],
       ['Incoming', `${formatRps(m.inRps)} rps`],
       ['Utilisation', `${Math.round(m.utilization * 100)}%`],
       ['Own latency', ms(m.ownLatency)],

@@ -69,6 +69,7 @@ const toolbar = new Toolbar(document.getElementById('toolbar')!, store, {
 const inspector = new Inspector(document.getElementById('inspector')!, store, {
   kill: (id) => sim.kill(id),
   flush: (id) => sim.flushCache(id),
+  killRegion: (region) => sim.killRegion(region, 60),
 });
 const metrics = new MetricsStrip(document.getElementById('metrics')!);
 const diagnosis = new DiagnosisPanel(document.getElementById('diagnosis')!, store);

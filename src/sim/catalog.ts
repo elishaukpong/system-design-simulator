@@ -48,6 +48,7 @@ export const CATALOG: Record<ComponentKind, ComponentDef> = {
       { key: 'writePct', label: 'Writes (of dynamic)', type: 'number', min: 0, max: 100, step: 5, default: 10, unit: '%' },
       { key: 'retries', label: 'Client retries', type: 'number', min: 0, max: 5, step: 1, default: 2, help: 'Failed requests are retried immediately. Watch the amplification when things go wrong.' },
       { key: 'timeoutMs', label: 'Client timeout', type: 'number', min: 200, max: 30000, step: 100, default: 5000, unit: 'ms' },
+      { key: 'sharePct', label: 'Traffic share', type: 'number', min: 0, max: 100, step: 5, default: 100, help: 'Relative weight when several Clients nodes exist, e.g. users per region. Clients go to the nearest healthy entry point.' },
     ],
   },
   dns: {
@@ -149,6 +150,8 @@ export const CATALOG: Record<ComponentKind, ComponentDef> = {
     params: [
       size('medium'),
       { key: 'maxConnections', label: 'Max connections', type: 'number', min: 20, max: 5000, step: 10, default: 300 },
+      { key: 'standby', label: 'Standby region', type: 'select', options: ['none', 'us-east', 'eu-west', 'ap-south'], default: 'none', help: 'A replicated standby. If the primary dies, it is promoted. Doubles the cost.' },
+      { key: 'failoverS', label: 'Failover time', type: 'number', min: 5, max: 120, step: 5, default: 30, unit: 's' },
     ],
   },
   replica: {
@@ -174,6 +177,8 @@ export const CATALOG: Record<ComponentKind, ComponentDef> = {
       size('medium'),
       { key: 'shards', label: 'Shards', type: 'number', min: 2, max: 64, step: 1, default: 4 },
       { key: 'hotKeyPct', label: 'Traffic on hottest shard', type: 'number', min: 0, max: 100, step: 5, default: 0, unit: '%', help: '0 = evenly spread. A celebrity user or a flash-sale SKU pushes this up.' },
+      { key: 'standby', label: 'Standby region', type: 'select', options: ['none', 'us-east', 'eu-west', 'ap-south'], default: 'none', help: 'A replicated standby. If the primary dies, it is promoted. Doubles the cost.' },
+      { key: 'failoverS', label: 'Failover time', type: 'number', min: 5, max: 120, step: 5, default: 30, unit: 's' },
     ],
   },
   objectStorage: {

@@ -98,7 +98,7 @@ export function profileFor(node: NodeSpec): Profile {
         baseLatency: 0.004,
         serversPerUnit: 4 * mult,
         connectionLimit: numberParam(p, 'maxConnections', 300),
-        monthlyPerUnit: 120 * mult,
+        monthlyPerUnit: 120 * mult * standbyFactor(p),
       };
     case 'replica':
       return {
@@ -117,7 +117,7 @@ export function profileFor(node: NodeSpec): Profile {
         weights: DATABASE_WEIGHTS,
         baseLatency: 0.004,
         serversPerUnit: 4 * mult,
-        monthlyPerUnit: 120 * mult * numberParam(p, 'shards', 4),
+        monthlyPerUnit: 120 * mult * numberParam(p, 'shards', 4) * standbyFactor(p),
       };
     case 'objectStorage':
       return { ...base, unitCapacity: 5500, weights: { static: 1, read: 1, write: 1.5 }, baseLatency: 0.04, monthlyPerUnit: 20, perMillionRequests: 0.4 };
@@ -133,6 +133,10 @@ export function profileFor(node: NodeSpec): Profile {
         maxQueueSeconds: 0,
       };
   }
+}
+
+function standbyFactor(p: NodeSpec['params']): number {
+  return p.standby && p.standby !== 'none' ? 2 : 1;
 }
 
 export function isAutoscaled(node: NodeSpec): boolean {

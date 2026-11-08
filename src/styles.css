@@ -279,6 +279,16 @@ input[type='range'] {
 .node-label[data-status='down'] .node-label-stat { color: #fff; background: #7f1d1d; border-color: var(--bad); font-weight: 600; }
 .node-label.selected .node-label-name { color: #7dd3fc; }
 
+.rtt-label {
+  pointer-events: none;
+  font: 600 10.5px var(--mono);
+  color: #fde68a;
+  background: rgba(7, 11, 22, 0.85);
+  border: 1px dashed #a16207;
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
 #metrics {
   position: absolute;
   left: 12px;

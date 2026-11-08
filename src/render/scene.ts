@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { numberParam } from '../sim/catalog';
+import { REGIONS, regionAt, regionRtt } from '../sim/regions';
 import { profileFor } from '../sim/profiles';
 import type { Selection } from '../state/store';
 import type { ComponentKind, Design, EdgeSpec, NodeMetrics, NodeSpec, SimSnapshot, TrafficClass } from '../sim/types';
@@ -39,6 +40,7 @@ interface EdgeView {
   tube: THREE.Mesh;
   arrow: THREE.Mesh;
   hit: THREE.Mesh;
+  rttLabel: CSS2DObject | null;
   spawn: Record<TrafficClass, number>;
   index: number;
 }
@@ -71,6 +73,7 @@ export class SceneView {
   private time = 0;
   private hoverTarget: string | null = null;
   private edgeSignature = '';
+  private regionLabels: THREE.Mesh[] = [];
 
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -128,6 +131,27 @@ export class SceneView {
     );
     this.ground.receiveShadow = true;
     this.scene.add(this.ground);
+    for (const region of REGIONS) {
+      const depth = region.zMax - region.zMin;
+      const plate = new THREE.Mesh(
+        new THREE.PlaneGeometry(420, depth).rotateX(-Math.PI / 2),
+        new THREE.MeshStandardMaterial({ color: region.color, roughness: 0.9 }),
+      );
+      plate.position.set(0, 0.004, (region.zMin + region.zMax) / 2);
+      plate.receiveShadow = true;
+      this.scene.add(plate);
+      const border = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.PlaneGeometry(420, depth).rotateX(-Math.PI / 2)),
+        new THREE.LineBasicMaterial({ color: 0x334155 }),
+      );
+      border.position.copy(plate.position).setY(0.02);
+      this.scene.add(border);
+      const label = makeGroundLabel(region.label.toUpperCase());
+      label.position.set(0, 0.03, region.zMin + 5);
+      this.regionLabels.push(label);
+      this.scene.add(label);
+    }
+
     const grid = new THREE.GridHelper(600, 600 / GRID, 0x1e293b, 0x151e33);
     grid.position.y = 0.01;
     this.scene.add(grid);
@@ -191,6 +215,8 @@ export class SceneView {
   }
 
   syncDesign(design: Design): void {
+    const minX = design.nodes.length ? Math.min(...design.nodes.map((n) => n.x)) : 0;
+    for (const label of this.regionLabels) label.position.x = minX + 22;
     const ids = new Set(design.nodes.map((n) => n.id));
     for (const [id, view] of this.nodes) {
       if (!ids.has(id)) {
@@ -219,7 +245,7 @@ export class SceneView {
       .map((e) => {
         const from = this.nodes.get(e.from)?.spec;
         const to = this.nodes.get(e.to)?.spec;
-        return from && to ? `${e.id}:${from.x},${from.z}>${to.x},${to.z}` : '';
+        return from && to ? `${e.id}:${from.x},${from.z}>${to.x},${to.z}:${e.latencyMs ?? 0}` : '';
       })
       .join('|');
     if (edgeSignature === this.edgeSignature) {
@@ -581,10 +607,25 @@ export class SceneView {
     arrow.position.copy(tip);
     arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tangent);
     this.scene.add(tube, hit, arrow);
-    return { spec, curve, length: curve.getLength(), tube, arrow, hit, spawn: { static: 0, read: 0, write: 0 }, index };
+    let rttLabel: CSS2DObject | null = null;
+    const fromRegion = regionAt(from.z);
+    const toRegion = regionAt(to.z);
+    if (from.kind !== 'clients' && fromRegion !== toRegion) {
+      const el = document.createElement('div');
+      el.className = 'rtt-label';
+      el.textContent = `${Math.round(regionRtt(fromRegion, toRegion) * 1000 + (spec.latencyMs ?? 0))}ms`;
+      rttLabel = new CSS2DObject(el);
+      rttLabel.position.copy(curve.getPointAt(0.5));
+      this.scene.add(rttLabel);
+    }
+    return { spec, curve, length: curve.getLength(), tube, arrow, hit, rttLabel, spawn: { static: 0, read: 0, write: 0 }, index };
   }
 
   private removeEdgeView(view: EdgeView): void {
+    if (view.rttLabel) {
+      view.rttLabel.element.remove();
+      this.scene.remove(view.rttLabel);
+    }
     for (const m of [view.tube, view.hit, view.arrow]) {
       this.scene.remove(m);
       m.geometry.dispose();
@@ -609,6 +650,23 @@ function colorFor(kind: ComponentKind): number {
     search: 0xf9a8d4,
   };
   return colors[kind] ?? 0xffffff;
+}
+
+function makeGroundLabel(text: string): THREE.Mesh {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  ctx.font = '600 64px Inter, system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(148, 163, 184, 0.55)';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 8, 64);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.Mesh(
+    new THREE.PlaneGeometry(64, 8).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false }),
+  );
 }
 
 function makeSmokeTexture(): THREE.Texture {

@@ -30,6 +30,7 @@ interface Instance {
 interface NodeState {
   instances: Instance[];
   activeRegion: RegionId | null;
+  lagFloor: number;
   stress: number;
   backlog: number;
   warmth: number;
@@ -152,9 +153,17 @@ export class Simulation {
     return this.last;
   }
 
+  killRegion(region: RegionId, downSeconds: number): void {
+    this.log('', 'error', `Region ${region} is down for ${downSeconds}s.`);
+    for (const node of this.design.nodes) {
+      if (node.kind !== 'clients' && this.regionOf(node) === region) this.kill(node.id, 1, downSeconds);
+    }
+  }
+
   kill(nodeId: string, fraction = 1, downSeconds = BOOT_SECONDS): void {
     const node = this.design.nodes.find((n) => n.id === nodeId);
     if (!node) return;
+    if (fraction >= 1 && this.failover(node)) return;
     const st = this.stateFor(node);
     const up = st.instances.filter((i) => i.readyAt <= this.t);
     const victims = fraction >= 1 ? st.instances : up.slice(0, Math.max(1, Math.round(up.length * fraction)));
@@ -169,6 +178,29 @@ export class Simulation {
       'error',
       fraction >= 1 ? `${node.name} killed. Back in ${downSeconds}s.` : `${node.name}: lost ${victims.length} of ${st.instances.length} instances for ${downSeconds}s.`,
     );
+  }
+
+  private failover(node: NodeSpec): boolean {
+    if (node.kind !== 'db' && node.kind !== 'shard') return false;
+    const standby = String(node.params.standby ?? 'none');
+    const current = this.regionOf(node);
+    if (standby === 'none' || standby === current) return false;
+    const st = this.stateFor(node);
+    const seconds = numberParam(node.params, 'failoverS', 30);
+    for (const instance of st.instances) {
+      instance.readyAt = this.t + seconds;
+      instance.cause = 'restart';
+    }
+    st.backlog = 0;
+    st.activeRegion = standby as RegionId;
+    const window = regionRtt(current, standby as RegionId) / 2 + 0.05;
+    const lost = Math.round(st.lastWriteRps * window);
+    this.log(
+      node.id,
+      'error',
+      `${node.name}: primary lost. Promoting the standby in ${standby} in ${seconds}s. The last ~${Math.round(window * 1000)}ms of writes (~${lost}) never replicated.`,
+    );
+    return true;
   }
 
   flushCache(nodeId: string): void {
@@ -204,11 +236,13 @@ export class Simulation {
 
     const offered = this.script ? Math.max(0, this.script(t)) : this.traffic.peakRps * trafficMultiplier(this.traffic.shape, t);
     const clientNodes = nodes.filter((n) => n.kind === 'clients');
+    const totalWeight = clientNodes.reduce((sum, c) => sum + Math.max(0, numberParam(c.params, 'sharePct', 100)), 0) || 1;
+    const shareOf = (client: NodeSpec) => (offered * Math.max(0, numberParam(client.params, 'sharePct', 100))) / totalWeight;
     let attempted = 0;
 
     for (const client of clientNodes) {
       const st = this.stateFor(client);
-      const share = offered / clientNodes.length;
+      const share = shareOf(client);
       const staticPct = numberParam(client.params, 'staticPct', 30) / 100;
       const writePct = numberParam(client.params, 'writePct', 10) / 100;
       const retries = numberParam(client.params, 'retries', 2);
@@ -374,7 +408,7 @@ export class Simulation {
       }
       const attemptFail = flowTotal > 0 ? 1 - clientSuccess : 0;
       st.lastAttemptFail = clamp(attemptFail, 0, 0.999);
-      const userShare = offered / Math.max(1, clientNodes.length);
+      const userShare = shareOf(client);
       successRps += userShare * (1 - Math.pow(attemptFail, retries + 1));
       attemptFailWeighted += attemptFail * flowTotal;
       latencyWeighted += clientLatency * flowTotal;
@@ -505,6 +539,7 @@ export class Simulation {
     if (node.kind === 'replica') {
       const primary = this.primaryFor(node, byId);
       const primaryWrites = primary ? this.stateFor(primary).lastWriteRps : 0;
+      st.lagFloor = primary ? regionRtt(this.regionOf(primary), this.regionOf(node)) / 2 : 0;
       load += primaryWrites * prof.weights.write * REPLAY_COST * healthy;
     }
 
@@ -674,7 +709,9 @@ export class Simulation {
         const targets = pickGroup(children, cls === 'static' ? PASS_STATIC : PASS_DYNAMIC, true);
         const usable = kind === 'lb' && boolParam(node.params, 'healthChecks', true)
           ? targets.filter((target) => this.isUp(byId.get(target.child)!))
-          : targets;
+          : kind === 'clients' || kind === 'dns'
+            ? this.nearestHealthy(node, targets, byId, links)
+            : targets;
         const remaining = 1 - edgeServed;
         const routes: Route[] = [];
         if (edgeServed > 0) routes.push({ child: null, edgeId: null, frac: edgeServed, amp: 1 });
@@ -754,6 +791,24 @@ export class Simulation {
     }
 
     for (const cls of TRAFFIC_CLASSES) plans[cls] = terminalPlan();
+  }
+
+  private nearestHealthy(node: NodeSpec, targets: Link[], byId: Map<string, NodeSpec>, links: Map<string, Link[]>): Link[] {
+    if (targets.length <= 1) return targets;
+    const healthy = targets.filter((t) => this.routeHealthy(t.child, byId, links));
+    const pool = healthy.length ? healthy : targets;
+    const from = this.regionOf(node);
+    const distance = (t: Link) => regionRtt(from, this.regionOf(byId.get(t.child)!));
+    const nearest = Math.min(...pool.map(distance));
+    return pool.filter((t) => distance(t) <= nearest + 0.005);
+  }
+
+  private routeHealthy(id: string, byId: Map<string, NodeSpec>, links: Map<string, Link[]>): boolean {
+    const node = byId.get(id)!;
+    if (!this.isUp(node)) return false;
+    if (!['lb', 'gateway', 'dns', 'cdn', 'breaker'].includes(node.kind)) return true;
+    const next = links.get(id) ?? [];
+    return next.length === 0 || next.some((l) => this.isUp(byId.get(l.child)!));
   }
 
   private splitWeights(node: NodeSpec, targets: Link[], byId: Map<string, NodeSpec>): number[] {
@@ -843,7 +898,7 @@ export class Simulation {
       if (node.kind === 'replica') {
         const util = m.utilization;
         if (util > 1) st.lag += dt * (util - 1) * 2;
-        else st.lag = Math.max(0.05 + 0.5 * Math.pow(util, 4), st.lag - dt * 2);
+        else st.lag = Math.max(st.lagFloor + 0.05 + 0.5 * Math.pow(util, 4), st.lag - dt * 2);
         if (st.lag > 2 && !st.lagWarned) {
           this.log(node.id, 'warn', `${node.name}: replication lag ${st.lag.toFixed(1)}s. Users are reading stale data.`);
           st.lagWarned = true;
@@ -999,6 +1054,7 @@ export class Simulation {
       st = {
         instances: [],
         activeRegion: null,
+        lagFloor: 0,
         stress: 0,
         backlog: 0,
         warmth: 0,

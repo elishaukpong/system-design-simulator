@@ -1,3 +1,4 @@
+import type { RegionId } from '../sim/regions';
 import type { ComponentKind, Design, ParamValue } from '../sim/types';
 
 export type CriterionRole = 'core' | 'budget' | 'bonus';
@@ -20,6 +21,7 @@ export interface GradedCriterion {
 export type ChaosEvent =
   | { at: number; action: 'kill'; target: ComponentKind; seconds: number; fraction?: number; message: string }
   | { at: number; action: 'flush'; target: 'cache'; message: string }
+  | { at: number; action: 'region'; region: RegionId; seconds: number; message: string }
   | { at: number; action: 'degrade'; target: ComponentKind; seconds: number; params: Record<string, ParamValue>; message: string };
 
 export interface Spike {

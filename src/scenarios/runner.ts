@@ -62,6 +62,11 @@ export class ScenarioRun {
     this.scenario.chaos.forEach((event, index) => {
       if (this.fired.has(index) || this.sim.t < event.at) return;
       this.fired.add(index);
+      if (event.action === 'region') {
+        this.sim.killRegion(event.region, event.seconds);
+        this.chaosLog.push({ t: event.at, message: event.message, applied: true });
+        return;
+      }
       const targets = this.design.nodes.filter((n) => n.kind === event.target);
       for (const target of targets) {
         if (event.action === 'kill') this.sim.kill(target.id, event.fraction ?? 1, event.seconds);
