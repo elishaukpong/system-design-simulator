@@ -31,6 +31,7 @@ export interface NodeSpec {
   x: number;
   z: number;
   params: Record<string, ParamValue>;
+  locked?: boolean;
 }
 
 export interface EdgeSpec {
