@@ -386,6 +386,75 @@ export class SceneView {
     this.labels.render(this.scene, this.camera);
   }
 
+  capture(snap: SimSnapshot | null, caption: string, scale = 2): HTMLCanvasElement {
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight;
+    const ratio = this.renderer.getPixelRatio();
+    const selection = this.selection;
+    const hover = this.hoverTarget;
+    this.selection = null;
+    this.hoverTarget = null;
+    this.update(snap, 0, false);
+
+    this.renderer.setPixelRatio(scale);
+    this.renderer.setSize(width, height);
+    this.renderer.render(this.scene, this.camera);
+
+    const out = document.createElement('canvas');
+    out.width = width * scale;
+    out.height = height * scale;
+    const ctx = out.getContext('2d')!;
+    ctx.drawImage(this.renderer.domElement, 0, 0, out.width, out.height);
+    ctx.scale(scale, scale);
+
+    const project = (point: THREE.Vector3) => {
+      const p = point.clone().project(this.camera);
+      return { x: ((p.x + 1) / 2) * width, y: ((1 - p.y) / 2) * height, visible: p.z < 1 && Math.abs(p.x) <= 1.1 && Math.abs(p.y) <= 1.1 };
+    };
+
+    for (const edge of this.edgeList) {
+      if (!edge.rttLabel) continue;
+      const at = project(edge.rttLabel.position);
+      if (at.visible) drawPill(ctx, edge.rttLabel.element.textContent ?? '', at.x, at.y, { text: '#fde68a', fill: 'rgba(7,11,22,0.85)', stroke: '#a16207', dashed: true });
+    }
+
+    for (const view of this.nodes.values()) {
+      const at = project(view.model.root.position.clone().add(new THREE.Vector3(0, 3.4, 0)));
+      if (!at.visible) continue;
+      ctx.font = '600 11.5px Inter, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 6;
+      ctx.fillStyle = '#f1f5f9';
+      ctx.fillText(view.labelName.textContent ?? '', at.x, at.y - 8);
+      ctx.shadowBlur = 0;
+      const status = view.label.element.dataset.status ?? 'idle';
+      drawPill(ctx, view.labelStat.textContent ?? '', at.x, at.y + 1, PILL_STYLE[status] ?? PILL_STYLE.idle);
+    }
+
+    ctx.fillStyle = 'rgba(7, 11, 22, 0.88)';
+    ctx.fillRect(0, height - 30, width, 30);
+    ctx.font = '600 12px Inter, system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#e2e8f0';
+    ctx.fillText('System Design Simulator', 12, height - 15);
+    ctx.font = '11.5px JetBrains Mono, ui-monospace, monospace';
+    ctx.fillStyle = '#8b9ab8';
+    ctx.textAlign = 'right';
+    ctx.fillText(caption, width - 12, height - 15);
+
+    this.renderer.setPixelRatio(ratio);
+    this.renderer.setSize(width, height);
+    this.selection = selection;
+    this.hoverTarget = hover;
+    this.applySelection();
+    this.update(snap, 0, false);
+    this.render();
+    return out;
+  }
+
   private animateNode(view: NodeView, m: NodeMetrics | null, dt: number, running: boolean): void {
     const model = view.model;
     const status = m?.status ?? 'idle';
@@ -650,6 +719,42 @@ function colorFor(kind: ComponentKind): number {
     search: 0xf9a8d4,
   };
   return colors[kind] ?? 0xffffff;
+}
+
+interface PillStyle {
+  text: string;
+  fill: string;
+  stroke: string;
+  dashed?: boolean;
+}
+
+const PILL_STYLE: Record<string, PillStyle> = {
+  idle: { text: '#8b9ab8', fill: 'rgba(7,11,22,0.8)', stroke: '#23304d' },
+  healthy: { text: '#86efac', fill: 'rgba(7,11,22,0.8)', stroke: '#23304d' },
+  warm: { text: '#fde047', fill: 'rgba(7,11,22,0.8)', stroke: '#574b12' },
+  hot: { text: '#fdba74', fill: 'rgba(7,11,22,0.8)', stroke: '#6b3410' },
+  overloaded: { text: '#fecaca', fill: 'rgba(127,29,29,0.85)', stroke: '#ef4444' },
+  down: { text: '#ffffff', fill: '#7f1d1d', stroke: '#ef4444' },
+};
+
+function drawPill(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, style: PillStyle): void {
+  if (!text) return;
+  ctx.font = '10.5px JetBrains Mono, ui-monospace, monospace';
+  const w = ctx.measureText(text).width + 12;
+  const h = 16;
+  ctx.beginPath();
+  ctx.roundRect(x - w / 2, y, w, h, 6);
+  ctx.fillStyle = style.fill;
+  ctx.fill();
+  ctx.setLineDash(style.dashed ? [3, 2] : []);
+  ctx.strokeStyle = style.stroke;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = style.text;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x, y + h / 2 + 0.5);
 }
 
 function makeGroundLabel(text: string): THREE.Mesh {

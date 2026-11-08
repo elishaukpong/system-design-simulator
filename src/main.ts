@@ -1,5 +1,5 @@
 import { Interaction } from './interaction';
-import { SceneView } from './render/scene';
+import { formatRps, SceneView } from './render/scene';
 import { diagnose } from './sim/analysis';
 import { Simulation } from './sim/engine';
 import { peakRps, scenarioById } from './scenarios/catalog';
@@ -56,8 +56,8 @@ const toolbar = new Toolbar(document.getElementById('toolbar')!, store, {
   resetSim: () => resetSim(),
   toggleConnect: () => interaction.toggleConnectMode(),
   fit: () => scene.fit(store.design),
-  exportDesign: () => openJsonDialog('export'),
-  importDesign: () => openJsonDialog('import'),
+  exportDesign: () => openExportDialog(),
+  importDesign: () => openImportDialog(),
   help: () => startMainTour(),
   openScenarios: () => {
     if (run) return;
@@ -321,57 +321,123 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-function openJsonDialog(mode: 'export' | 'import'): void {
+function currentSnapshot() {
+  return replay?.frame() ?? sim.snapshot;
+}
+
+function imageCaption(): string {
+  const parts: string[] = [];
+  const snap = currentSnapshot();
+  if (scenario) parts.push(scenario.title);
+  if (snap && snap.global.offeredRps > 0) {
+    const g = snap.global;
+    parts.push(
+      `${formatRps(g.offeredRps)} rps`,
+      `p99 ${g.p99 >= 1 ? `${g.p99.toFixed(2)}s` : `${Math.round(g.p99 * 1000)}ms`}`,
+      `errors ${(Math.max(0, g.errorRate - g.shedRate) * 100).toFixed(1)}%`,
+      `$${formatRps(g.costPerMonth)}/mo`,
+    );
+  }
+  parts.push(localStamp().slice(0, 10));
+  return parts.join('  ·  ');
+}
+
+function localStamp(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function download(href: string, filename: string): void {
+  h('a', { href, download: filename }).click();
+}
+
+function openExportDialog(): void {
+  const image = scene.capture(currentSnapshot(), imageCaption());
+  const pngUrl = image.toDataURL('image/png');
+  const json = JSON.stringify(store.serialize(), null, 2);
+  const stamp = localStamp().replace(/[: ]/g, '-');
+  const name = scenario ? scenario.id : 'system-design';
+  const dialog = h(
+    'dialog',
+    { class: 'export' },
+    h('h3', {}, 'Export'),
+    h('p', { class: 'muted small' }, 'The image is the current view at 2× resolution, labels and live numbers included. Press F before exporting to fit the whole design.'),
+    h('img', { class: 'export-preview', src: pngUrl, alt: 'Rendered design' }),
+    h(
+      'div',
+      { class: 'actions' },
+      h('button', { class: 'primary', on: { click: () => download(pngUrl, `${name}-${stamp}.png`) } }, 'Download PNG'),
+      h(
+        'button',
+        {
+          title: 'Copy the image to the clipboard',
+          on: {
+            click: () => {
+              image.toBlob((blob) => {
+                if (blob) navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).catch(() => undefined);
+              });
+            },
+          },
+        },
+        'Copy image',
+      ),
+      h(
+        'button',
+        {
+          title: 'The design as JSON, to import later or share',
+          on: {
+            click: () => {
+              const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+              download(url, `${name}-${stamp}.json`);
+              URL.revokeObjectURL(url);
+            },
+          },
+        },
+        'Download JSON',
+      ),
+      h('button', { on: { click: () => dialog.close() } }, 'Close'),
+    ),
+  );
+  dialog.addEventListener('close', () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
+function openImportDialog(): void {
   const textarea = h('textarea', { spellcheck: false });
   const error = h('div', { class: 'warning' });
-  if (mode === 'export') textarea.value = JSON.stringify(store.serialize(), null, 2);
   const dialog = h(
     'dialog',
     {},
-    h('h3', {}, mode === 'export' ? 'Export design' : 'Import design'),
-    h('p', { class: 'muted small' }, mode === 'export' ? 'Copy this JSON, or download it.' : 'Paste a design exported from this simulator.'),
+    h('h3', {}, 'Import design'),
+    h('p', { class: 'muted small' }, 'Paste a design exported from this simulator.'),
     textarea,
     error,
     h(
       'div',
       { class: 'actions' },
-      mode === 'export'
-        ? h(
-            'button',
-            {
-              class: 'primary',
-              on: {
-                click: () => {
-                  const blob = new Blob([textarea.value], { type: 'application/json' });
-                  const a = h('a', { href: URL.createObjectURL(blob), download: 'system-design.json' });
-                  a.click();
-                  URL.revokeObjectURL(a.href);
-                },
-              },
+      h(
+        'button',
+        {
+          class: 'primary',
+          on: {
+            click: () => {
+              try {
+                const parsed = parseSaved(textarea.value);
+                if (!parsed) throw new Error('That is not a design exported from this simulator.');
+                store.load(parsed);
+                resetSim();
+                scene.fit(store.design);
+                dialog.close();
+              } catch (err) {
+                error.textContent = err instanceof Error ? err.message : String(err);
+              }
             },
-            'Download',
-          )
-        : h(
-            'button',
-            {
-              class: 'primary',
-              on: {
-                click: () => {
-                  try {
-                    const parsed = parseSaved(textarea.value);
-                    if (!parsed) throw new Error('That is not a design exported from this simulator.');
-                    store.load(parsed);
-                    resetSim();
-                    scene.fit(store.design);
-                    dialog.close();
-                  } catch (err) {
-                    error.textContent = err instanceof Error ? err.message : String(err);
-                  }
-                },
-              },
-            },
-            'Import',
-          ),
+          },
+        },
+        'Import',
+      ),
       h('button', { on: { click: () => dialog.close() } }, 'Close'),
     ),
   );

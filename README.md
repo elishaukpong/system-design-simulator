@@ -25,6 +25,8 @@ A guided tour starts on the first visit, and the **?** next to the logo brings i
 
 Chaos: select a component and **Kill** it, or **Flush** a cache.
 
+**Export** renders the current view as a 2× PNG, with every label, the live numbers and a footer, ready to download or copy. It also downloads the design as JSON for **Import** later. Press `F` first to fit the whole design.
+
 ## Scenarios
 
 **🎯 Scenarios** opens twelve graded challenges, from *Launch day* to *Region outage*. Each one fixes the traffic mix, scripts the load and the chaos (a cache flush, a provider outage, a zone going dark), and sets the targets:

@@ -651,6 +651,18 @@ dialog::backdrop {
   background: rgba(2, 6, 15, 0.7);
 }
 
+dialog.export {
+  max-width: 900px;
+}
+
+.export-preview {
+  display: block;
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  margin: 8px 0 4px;
+}
+
 dialog textarea {
   width: 100%;
   height: 260px;
