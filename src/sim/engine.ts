@@ -505,7 +505,7 @@ export class Simulation {
     backlog -= dropped;
     st.backlog = backlog;
 
-    const acceptedFrac = load > 0 ? 1 - dropped / (load * dt) : 1;
+    const acceptedFrac = load > 0 ? clamp(1 - dropped / (load * dt), 0, 1) : 1;
     const forwardFrac = load > 0 ? processed / (load * dt) : 0;
     const rho = effectiveOps > 0 ? load / effectiveOps : Infinity;
     const wait = effectiveOps > 0 ? backlog / effectiveOps : 0;
@@ -585,7 +585,7 @@ export class Simulation {
       wState.pullDemand = (accepted + depth / 30) * share;
     }
 
-    const acceptedFrac = inRps > 0 ? (accepted - overflow) / inRps : 1;
+    const acceptedFrac = inRps > 0 ? clamp((accepted - overflow) / inRps, 0, 1) : 1;
     for (const cls of TRAFFIC_CLASSES) {
       plans[cls] = { routes: [], calls: [], unrouted: 0, async: true };
       forwarded[cls] = 0;
