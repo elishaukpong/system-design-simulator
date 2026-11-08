@@ -41,6 +41,8 @@ export function describeCriterion(criterion: Criterion): { label: string; target
       return { label: 'Availability', target: `≥ ${pct(criterion.min, 2)}` };
     case 'p99':
       return { label: 'p99 latency', target: `≤ ${criterion.maxMs} ms, ${Math.round(criterion.withinPct * 100)}% of the time` };
+    case 'p50':
+      return { label: 'Median latency', target: `≤ ${criterion.maxMs} ms, ${Math.round(criterion.withinPct * 100)}% of the time` };
     case 'cost':
       return { label: 'Budget', target: `≤ $${criterion.max.toLocaleString()}/mo` };
     case 'shed':
@@ -75,6 +77,12 @@ function evaluate({ criterion, role }: GradedCriterion, samples: Sample[]): Crit
       const fastAndServing = (s: Sample) => s.p99 * 1000 <= criterion.maxMs && (s.offered <= 0 || s.success / s.offered >= 0.5);
       const within = samples.length ? samples.filter(fastAndServing).length / samples.length : 0;
       const worst = Math.max(0, ...samples.map((s) => s.p99));
+      return result(`${Math.round(within * 100)}% of the time (worst ${ms(worst)})`, within >= criterion.withinPct);
+    }
+    case 'p50': {
+      const fastAndServing = (s: Sample) => s.p50 * 1000 <= criterion.maxMs && (s.offered <= 0 || s.success / s.offered >= 0.5);
+      const within = samples.length ? samples.filter(fastAndServing).length / samples.length : 0;
+      const worst = Math.max(0, ...samples.map((s) => s.p50));
       return result(`${Math.round(within * 100)}% of the time (worst ${ms(worst)})`, within >= criterion.withinPct);
     }
     case 'cost': {

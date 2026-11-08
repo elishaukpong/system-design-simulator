@@ -73,7 +73,7 @@ export class Interaction {
     }
 
     const nodeId = this.scene.pickNode(e.clientX, e.clientY);
-    if (nodeId && this.store.editingLocked) {
+    if (nodeId && (this.store.editingLocked || (this.store.node(nodeId)?.locked && !this.connectMode && !e.shiftKey))) {
       this.store.select({ type: 'node', id: nodeId });
       return;
     }

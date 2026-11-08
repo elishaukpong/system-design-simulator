@@ -35,6 +35,10 @@ const FEED_CLIENTS = { staticPct: 40, writePct: 5, retries: 2, timeoutMs: 3000 }
 const ZONE_CLIENTS = { staticPct: 20, writePct: 15, retries: 2, timeoutMs: 5000 };
 const STORM_CLIENTS = { staticPct: 0, writePct: 20, retries: 4, timeoutMs: 800 };
 const INGEST_CLIENTS = { staticPct: 0, writePct: 98, retries: 1, timeoutMs: 2000 };
+const REGION_CLIENTS = { staticPct: 20, writePct: 10, retries: 2, timeoutMs: 5000 };
+const GLOBAL_CLIENTS = { staticPct: 30, writePct: 5, retries: 2, timeoutMs: 5000 };
+const WRITE_CLIENTS = { staticPct: 0, writePct: 40, retries: 1, timeoutMs: 5000 };
+const PAYOUT_CLIENTS = { staticPct: 0, writePct: 100, retries: 1, timeoutMs: 10000 };
 
 export const SCENARIOS: Scenario[] = [
   {
@@ -343,6 +347,199 @@ export const SCENARIOS: Scenario[] = [
       'Writes scale out by key. How many shards does 20k need?',
     ],
     curriculum: ['Day 13 · Sharding', 'Day 24 · Queues', 'Day 40 · Job & worker architectures', 'Day 41 · Read-heavy vs write-heavy'],
+  },
+  {
+    id: 'region-outage',
+    title: 'Region outage',
+    difficulty: 3,
+    tagline: 'us-east goes dark for 90 seconds. Your users are on two continents.',
+    brief: [
+      'Everything runs in us-east: 60% of your users are in the US, 40% in Europe. At t=60s the whole region goes down for 90 seconds. Every component on that plate dies with it.',
+      'Keep serving. Users route to the nearest healthy region, so give them one. The database is the hard part.',
+    ],
+    facts: ['2,000 rps steady', 'US users 60%, EU users 40% (locked)', '10% writes, 20% static', 'us-east is down from t=60s to t=150s'],
+    duration: 180,
+    keyframes: [
+      [0, 2000],
+      [180, 2000],
+    ],
+    clients: REGION_CLIENTS,
+    lockedParams: { app: { searchPct: 0, externalCallPct: 0 } },
+    start: () =>
+      design(
+        [
+          node('us-users', 'clients', -1, 0, { ...REGION_CLIENTS, sharePct: 60 }, { name: 'US users', locked: true }),
+          node('eu-users', 'clients', -1, 8, { ...REGION_CLIENTS, sharePct: 40 }, { name: 'EU users', locked: true }),
+          node('lb-us', 'lb', 0, 0, {}, { name: 'LB us-east' }),
+          node('app-us', 'app', 1, 0, { instances: 12, searchPct: 0, externalCallPct: 0 }, { name: 'App us-east' }),
+          node('db', 'db', 2, 0),
+        ],
+        [
+          ['us-users', 'lb-us'],
+          ['eu-users', 'lb-us'],
+          ['lb-us', 'app-us'],
+          ['app-us', 'db'],
+        ],
+      ),
+    criteria: [
+      { role: 'core', criterion: { type: 'availability', min: 0.98 } },
+      { role: 'core', criterion: { type: 'p99', maxMs: 800, withinPct: 0.9 } },
+      { role: 'budget', criterion: { type: 'cost', max: 2200 } },
+      { role: 'bonus', criterion: { type: 'chaosAvailability', min: 0.97, from: 60, to: 150 } },
+    ],
+    chaos: [{ at: 60, action: 'region', region: 'us-east', seconds: 90, message: 'us-east is down.' }],
+    hints: [
+      'Users go to the nearest healthy entry point. Put a load balancer and an app fleet in eu-west, and connect both user groups to both.',
+      'The surviving region takes all the traffic. Size it for 100%, not 40%.',
+      'A database dies with its region unless it has a standby elsewhere. Failover time is downtime for every write.',
+    ],
+    curriculum: ['Day 28 · Failure modes', 'Day 33 · Health checks', 'Day 42 · CAP, PACELC', 'Day 12 · Replication'],
+  },
+  {
+    id: 'global-reads',
+    title: 'Global read-heavy app',
+    difficulty: 2,
+    tagline: 'Users on three continents, everything in Virginia. The speed of light disagrees.',
+    brief: [
+      'A content site with readers in the US, Europe and India. 95% of requests are reads. Everything is deployed in us-east today.',
+      'A reader in Mumbai pays 200ms of round trip before your code runs. Get the median request under 120ms for everyone, without doubling the bill three times over.',
+    ],
+    facts: ['4,000 rps peak, daily wave', 'Users: US 40%, EU 35%, India 25% (locked)', '95% reads, 30% static', 'Round trip: us↔eu 75ms, us↔ap 200ms, eu↔ap 120ms'],
+    duration: 180,
+    keyframes: [
+      [0, 1500],
+      [60, 4000],
+      [120, 4000],
+      [180, 2000],
+    ],
+    clients: GLOBAL_CLIENTS,
+    lockedParams: { app: { searchPct: 0, externalCallPct: 0 } },
+    start: () =>
+      design(
+        [
+          node('us-users', 'clients', -1, 0, { ...GLOBAL_CLIENTS, sharePct: 40 }, { name: 'US readers', locked: true }),
+          node('eu-users', 'clients', -1, 8, { ...GLOBAL_CLIENTS, sharePct: 35 }, { name: 'EU readers', locked: true }),
+          node('ap-users', 'clients', -1, -8, { ...GLOBAL_CLIENTS, sharePct: 25 }, { name: 'India readers', locked: true }),
+          node('lb-us', 'lb', 0, 0, {}, { name: 'LB us-east' }),
+          node('app-us', 'app', 1, 0, { instances: 24, searchPct: 0, externalCallPct: 0 }, { name: 'App us-east' }),
+          node('db', 'db', 2, 0),
+        ],
+        [
+          ['us-users', 'lb-us'],
+          ['eu-users', 'lb-us'],
+          ['ap-users', 'lb-us'],
+          ['lb-us', 'app-us'],
+          ['app-us', 'db'],
+        ],
+      ),
+    criteria: [
+      { role: 'core', criterion: { type: 'availability', min: 0.995 } },
+      { role: 'core', criterion: { type: 'p50', maxMs: 120, withinPct: 0.95 } },
+      { role: 'budget', criterion: { type: 'cost', max: 3200 } },
+      { role: 'bonus', criterion: { type: 'p99', maxMs: 400, withinPct: 0.9 } },
+    ],
+    chaos: [],
+    hints: [
+      'A third of the traffic is static. A CDN answers from a PoP near the user, wherever your servers are.',
+      'Reads can be served where the reader is. Put an app fleet and a read replica in each region.',
+      'Writes still go to the one primary. That is fine at 5%. It would not be at 50%.',
+    ],
+    curriculum: ['Day 4 · The network stack', 'Day 12 · Replication', 'Day 18 · CDNs & edge caching', 'Day 43 · Consistency models'],
+  },
+  {
+    id: 'cross-region-writes',
+    title: 'Cross-region writes',
+    difficulty: 3,
+    tagline: 'Half your users are an ocean from the primary, and 40% of what they do is write.',
+    brief: [
+      'A messaging app with users split between the US and Europe. 40% of requests send a message. The primary database is in us-east and stays there: one leader, no multi-master.',
+      'A European write pays 75ms of round trip to the primary before it can be acknowledged. Get p99 under 110ms for everyone.',
+    ],
+    facts: ['2,000 rps steady', 'US 50%, EU 50% (locked)', '40% writes, no static', 'The primary stays in us-east'],
+    duration: 150,
+    keyframes: [
+      [0, 2000],
+      [150, 2000],
+    ],
+    clients: WRITE_CLIENTS,
+    lockedParams: { app: { searchPct: 0, externalCallPct: 0 }, workers: { externalCallPct: 0 } },
+    start: () =>
+      design(
+        [
+          node('us-users', 'clients', -1, 0, { ...WRITE_CLIENTS, sharePct: 50 }, { name: 'US users', locked: true }),
+          node('eu-users', 'clients', -1, 8, { ...WRITE_CLIENTS, sharePct: 50 }, { name: 'EU users', locked: true }),
+          node('lb-us', 'lb', 0, 0, {}, { name: 'LB us-east' }),
+          node('app-us', 'app', 1, 0, { instances: 20, searchPct: 0, externalCallPct: 0 }, { name: 'App us-east' }),
+          node('db', 'db', 2, 0, { size: 'large' }, { name: 'Primary DB', locked: true }),
+        ],
+        [
+          ['us-users', 'lb-us'],
+          ['eu-users', 'lb-us'],
+          ['lb-us', 'app-us'],
+          ['app-us', 'db'],
+        ],
+      ),
+    criteria: [
+      { role: 'core', criterion: { type: 'availability', min: 0.995 } },
+      { role: 'core', criterion: { type: 'p99', maxMs: 110, withinPct: 0.95 } },
+      { role: 'budget', criterion: { type: 'cost', max: 2600 } },
+      { role: 'bonus', criterion: { type: 'queueLag', maxS: 10 } },
+    ],
+    chaos: [],
+    hints: [
+      'An app fleet in eu-west gets European users off the ocean for reads. Writes are the problem.',
+      'Does a sent message have to be in the primary before you say "sent"? Or only somewhere durable nearby?',
+      'A queue in eu-west acknowledges locally. Workers near the primary drain it. You have just chosen eventual consistency.',
+    ],
+    curriculum: ['Day 21 · Sync vs async', 'Day 42 · CAP, PACELC', 'Day 43 · Consistency models', 'Day 48 · Event-driven architecture'],
+  },
+  {
+    id: 'payouts',
+    title: 'Payouts, exactly once',
+    difficulty: 2,
+    tagline: 'The bank API is down for a minute. Lose nothing, and pay nobody twice.',
+    brief: [
+      'Sellers request payouts. Each one is a call to the bank API, which you do not control. At t=40s the bank fails every call for 60 seconds.',
+      'Accept every request, lose none of them, and do not pay anyone twice when you retry.',
+    ],
+    facts: ['200 rps steady, all writes', 'Bank: 400ms, rate limit 300 rps, 2% baseline failures', 'Workers call the bank for every job (locked)', 'Bank fails 100% from t=40s to t=100s'],
+    duration: 180,
+    keyframes: [
+      [0, 200],
+      [180, 200],
+    ],
+    clients: PAYOUT_CLIENTS,
+    lockedParams: { app: { externalCallPct: 100, searchPct: 0 }, workers: { externalCallPct: 100 } },
+    start: () =>
+      design(
+        [
+          node('clients', 'clients', -1, 0, PAYOUT_CLIENTS, { name: 'Sellers' }),
+          node('app', 'app', 0, 0, { instances: 4, externalCallPct: 100, searchPct: 0 }),
+          node('db', 'db', 1, -1),
+          node('bank', 'external', 1, 1, { rateLimitRps: 300, latencyMs: 400, failurePct: 2 }, { name: 'Bank API', locked: true }),
+        ],
+        [
+          ['clients', 'app'],
+          ['app', 'db'],
+          ['app', 'bank'],
+        ],
+      ),
+    criteria: [
+      { role: 'core', criterion: { type: 'availability', min: 0.99 } },
+      { role: 'core', criterion: { type: 'dataLoss', max: 0 } },
+      { role: 'budget', criterion: { type: 'cost', max: 950 } },
+      { role: 'bonus', criterion: { type: 'duplicates', max: 0 } },
+      { role: 'bonus', criterion: { type: 'deadLettered', max: 0 } },
+    ],
+    chaos: [
+      { at: 40, action: 'degrade', target: 'external', seconds: 60, params: { failurePct: 100 }, message: 'The bank API is failing every call.' },
+    ],
+    hints: [
+      'Accepting a payout and making it are two different things. A queue separates them.',
+      'A retry only helps if it happens after the bank is back. Visibility timeout × max receives is how long a job keeps trying.',
+      'If the bank charged but the reply was lost, a retry pays twice. Mark the workers idempotent (an idempotency key per payout).',
+    ],
+    curriculum: ['Day 6 · Idempotency', 'Day 24 · Queues', 'Day 29 · Retries', 'Day 45 · Idempotency keys'],
   },
 ];
 

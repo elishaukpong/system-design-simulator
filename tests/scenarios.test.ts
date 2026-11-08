@@ -6,16 +6,131 @@ import { defaultParams } from '../src/sim/catalog';
 import { Simulation } from '../src/sim/engine';
 import type { ComponentKind, Design, ParamValue } from '../src/sim/types';
 
-type N = [id: string, kind: ComponentKind, params?: Record<string, ParamValue>];
+type N = [id: string, kind: ComponentKind, params?: Record<string, ParamValue>, z?: number];
+
+const US = 0;
+const EU = 96;
+const AP = -96;
 
 function build(nodes: N[], edges: Array<[string, string]>): Design {
   return {
-    nodes: nodes.map(([id, kind, params], i) => ({ id, kind, name: id, x: i * 12, z: 0, params: { ...defaultParams(kind), ...params } })),
+    nodes: nodes.map(([id, kind, params, z], i) => ({ id, kind, name: id, x: i * 12, z: z ?? 0, params: { ...defaultParams(kind), ...params } })),
     edges: edges.map(([from, to]) => ({ id: `${from}->${to}`, from, to })),
   };
 }
 
 const REFERENCE: Record<string, () => Design> = {
+  'region-outage': () =>
+    build(
+      [
+        ['us-users', 'clients', { sharePct: 60 }, US],
+        ['eu-users', 'clients', { sharePct: 40 }, EU],
+        ['lb-us', 'lb', {}, US],
+        ['app-us', 'app', { instances: 12 }, US],
+        ['lb-eu', 'lb', {}, EU],
+        ['app-eu', 'app', { instances: 20 }, EU],
+        ['cache-eu', 'cache', { nodes: 2 }, EU],
+        ['db', 'db', { standby: 'eu-west', failoverS: 10 }, US],
+      ],
+      [
+        ['us-users', 'lb-us'],
+        ['us-users', 'lb-eu'],
+        ['eu-users', 'lb-eu'],
+        ['eu-users', 'lb-us'],
+        ['lb-us', 'app-us'],
+        ['lb-eu', 'app-eu'],
+        ['app-us', 'db'],
+        ['app-eu', 'cache-eu'],
+        ['app-eu', 'db'],
+      ],
+    ),
+  'global-reads': () =>
+    build(
+      [
+        ['us-users', 'clients', { sharePct: 40 }, US],
+        ['eu-users', 'clients', { sharePct: 35 }, EU],
+        ['ap-users', 'clients', { sharePct: 25 }, AP],
+        ['cdn', 'cdn', {}, US],
+        ['s3', 'objectStorage', {}, US],
+        ['lb-us', 'lb', {}, US],
+        ['app-us', 'app', { instances: 12 }, US],
+        ['replica-us', 'replica', { count: 1 }, US],
+        ['db', 'db', {}, US],
+        ['lb-eu', 'lb', {}, EU],
+        ['app-eu', 'app', { instances: 10 }, EU],
+        ['replica-eu', 'replica', { count: 1 }, EU],
+        ['lb-ap', 'lb', {}, AP],
+        ['app-ap', 'app', { instances: 8 }, AP],
+        ['replica-ap', 'replica', { count: 1 }, AP],
+      ],
+      [
+        ['us-users', 'cdn'],
+        ['eu-users', 'cdn'],
+        ['ap-users', 'cdn'],
+        ['cdn', 's3'],
+        ['us-users', 'lb-us'],
+        ['eu-users', 'lb-eu'],
+        ['ap-users', 'lb-ap'],
+        ['lb-us', 'app-us'],
+        ['lb-eu', 'app-eu'],
+        ['lb-ap', 'app-ap'],
+        ['app-us', 'replica-us'],
+        ['app-eu', 'replica-eu'],
+        ['app-ap', 'replica-ap'],
+        ['app-us', 'db'],
+        ['app-eu', 'db'],
+        ['app-ap', 'db'],
+        ['db', 'replica-us'],
+        ['db', 'replica-eu'],
+        ['db', 'replica-ap'],
+      ],
+    ),
+  'cross-region-writes': () =>
+    build(
+      [
+        ['us-users', 'clients', { sharePct: 50 }, US],
+        ['eu-users', 'clients', { sharePct: 50 }, EU],
+        ['lb-us', 'lb', {}, US],
+        ['app-us', 'app', { instances: 12 }, US],
+        ['db', 'db', { size: 'large' }, US],
+        ['lb-eu', 'lb', {}, EU],
+        ['app-eu', 'app', { instances: 12 }, EU],
+        ['replica-eu', 'replica', { count: 1 }, EU],
+        ['queue-eu', 'queue', {}, EU],
+        ['workers-us', 'workers', { instances: 8 }, US],
+      ],
+      [
+        ['us-users', 'lb-us'],
+        ['eu-users', 'lb-eu'],
+        ['lb-us', 'app-us'],
+        ['lb-eu', 'app-eu'],
+        ['app-us', 'db'],
+        ['app-eu', 'replica-eu'],
+        ['app-eu', 'queue-eu'],
+        ['queue-eu', 'workers-us'],
+        ['workers-us', 'db'],
+        ['db', 'replica-eu'],
+      ],
+    ),
+  payouts: () =>
+    build(
+      [
+        ['clients', 'clients'],
+        ['app', 'app', { instances: 4 }],
+        ['db', 'db'],
+        ['queue', 'queue', { maxReceives: 5, visibilityS: 30 }],
+        ['workers', 'workers', { instances: 8, idempotent: true }],
+        ['bank', 'external', { rateLimitRps: 300, latencyMs: 400, failurePct: 2 }],
+      ],
+      [
+        ['clients', 'app'],
+        ['app', 'db'],
+        ['app', 'queue'],
+        ['queue', 'workers'],
+        ['workers', 'bank'],
+        ['workers', 'db'],
+      ],
+    ),
   'launch-day': () =>
     build(
       [

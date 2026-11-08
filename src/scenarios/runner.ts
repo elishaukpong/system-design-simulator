@@ -97,6 +97,7 @@ export class ScenarioRun {
       success: g.successRps,
       errorRate: g.errorRate,
       shedRate: g.shedRate,
+      p50: g.p50,
       p99: g.p99,
       cost: g.costPerMonth,
       retryAmplification: g.retryAmplification,

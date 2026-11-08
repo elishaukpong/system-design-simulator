@@ -83,7 +83,7 @@ export class Store {
 
   moveNode(id: string, x: number, z: number): void {
     const node = this.node(id);
-    if (this.editingLocked || !node || (node.x === x && node.z === z)) return;
+    if (this.editingLocked || !node || node.locked || (node.x === x && node.z === z)) return;
     node.x = x;
     node.z = z;
     this.emitDesign();

@@ -6,6 +6,7 @@ export type CriterionRole = 'core' | 'budget' | 'bonus';
 export type Criterion =
   | { type: 'availability'; min: number }
   | { type: 'p99'; maxMs: number; withinPct: number }
+  | { type: 'p50'; maxMs: number; withinPct: number }
   | { type: 'cost'; max: number }
   | { type: 'shed'; maxPct: number }
   | { type: 'queueLag'; maxS: number }
@@ -58,6 +59,7 @@ export interface Sample {
   success: number;
   errorRate: number;
   shedRate: number;
+  p50: number;
   p99: number;
   cost: number;
   retryAmplification: number;
