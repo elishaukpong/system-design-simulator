@@ -294,4 +294,26 @@ describe('Simulation', () => {
     expect(snap.nodes.app.healthyInstances).toBe(3);
     expect(snap.nodes.app.status).not.toBe('down');
   });
+
+  it('a cache behind a circuit breaker still serves hits', () => {
+    const d = design(
+      [
+        ['clients', 'clients', { staticPct: 0, retries: 0 }],
+        ['app', 'app', { instances: 20, searchPct: 0 }],
+        ['cb', 'breaker'],
+        ['cache', 'cache'],
+        ['db', 'db'],
+      ],
+      [
+        ['clients', 'app'],
+        ['app', 'cb'],
+        ['cb', 'cache'],
+        ['app', 'db'],
+      ],
+    );
+    const { snap } = run(d, 2000, 60);
+
+    expect(snap.nodes.cache.inRps).toBeGreaterThan(1000);
+    expect(snap.nodes.db.inRps).toBeLessThan(600);
+  });
 });

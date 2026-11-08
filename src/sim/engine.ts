@@ -527,7 +527,9 @@ export class Simulation {
     const forwardFrac = load > 0 ? processed / (load * dt) : 0;
     const rho = effectiveOps > 0 ? load / effectiveOps : Infinity;
     const wait = effectiveOps > 0 ? backlog / effectiveOps : 0;
-    const queueing = prof.baseLatency * (1 / (1 - Math.min(rho, 0.95)) - 1);
+    const servers = Math.max(1, prof.serversPerUnit * (node.kind === 'shard' ? 1 : healthy));
+    const busy = Math.min(rho, 0.98);
+    const queueing = (prof.baseLatency * Math.pow(busy, Math.sqrt(2 * (servers + 1)) - 1)) / (servers * (1 - busy));
     const ownLatency = prof.baseLatency + queueing + wait;
     const ownP99 = prof.baseLatency * 1.3 + queueing * 4.6 + wait * 1.1;
     st.ownLatency = ownLatency;
@@ -694,8 +696,7 @@ export class Simulation {
         if (readThrough) {
           readRoutes.push(...toRoutes(caches, plainReads));
         } else {
-          const cache = byId.get(caches[0].child)!;
-          const hit = this.effectiveHit(cache);
+          const hit = this.hitThrough(caches[0].child, byId, links);
           for (const c of caches) readCalls.push({ child: c.child, edgeId: c.edgeId, frac: plainReads / caches.length, fatal: false });
           readRoutes.push({ child: null, edgeId: null, frac: plainReads * hit, amp: 1 });
           const misses = plainReads * (1 - hit);
@@ -868,6 +869,21 @@ export class Simulation {
     const healthy = m.healthyInstances;
     if (healthy === 0 || m.inRps === 0) return 0;
     return (m.inRps * weighted(prof.weights, m.inByClass)) / (prof.unitCapacity * healthy);
+  }
+
+  private hitThrough(id: string, byId: Map<string, NodeSpec>, links: Map<string, Link[]>): number {
+    let node = byId.get(id)!;
+    let passFrac = 1;
+    for (let depth = 0; depth < 6 && (node.kind === 'breaker' || node.kind === 'lb'); depth++) {
+      if (node.kind === 'breaker') {
+        const state = this.stateFor(node).breaker;
+        passFrac *= state === 'open' ? 0 : state === 'half-open' ? 0.1 : 1;
+      }
+      const next = links.get(node.id)?.[0];
+      if (!next) return 0;
+      node = byId.get(next.child)!;
+    }
+    return node.kind === 'cache' ? passFrac * this.effectiveHit(node) : 0;
   }
 
   private effectiveHit(cache: NodeSpec): number {

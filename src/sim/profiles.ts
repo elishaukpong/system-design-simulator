@@ -7,6 +7,7 @@ export interface Profile {
   weights: ClassFlow;
   baseLatency: number;
   threadsPerUnit: number | null;
+  serversPerUnit: number;
   connectionLimit: number | null;
   maxQueueSeconds: number;
   crashable: boolean;
@@ -31,6 +32,7 @@ export function profileFor(node: NodeSpec): Profile {
     weights: UNIFORM,
     baseLatency: 0.001,
     threadsPerUnit: null,
+    serversPerUnit: 8,
     connectionLimit: null,
     maxQueueSeconds: 1,
     crashable: false,
@@ -45,11 +47,11 @@ export function profileFor(node: NodeSpec): Profile {
     case 'dns':
       return { ...base, unitCapacity: 1e9, baseLatency: 0.0005, passThrough: true, monthlyPerUnit: 1 };
     case 'cdn':
-      return { ...base, unitCapacity: 5e6, baseLatency: 0.012, passThrough: true, perMillionRequests: 0.75 };
+      return { ...base, unitCapacity: 5e6, baseLatency: 0.012, passThrough: true, monthlyPerUnit: 20, perMillionRequests: 0.1 };
     case 'lb':
       return { ...base, unitCapacity: 100_000, baseLatency: 0.001, passThrough: true, monthlyPerUnit: 20, perMillionRequests: 0.02 };
     case 'gateway':
-      return { ...base, unitCapacity: 50_000, baseLatency: 0.003, passThrough: true, perMillionRequests: 3.5 };
+      return { ...base, unitCapacity: 50_000, baseLatency: 0.003, passThrough: true, perMillionRequests: 1 };
     case 'breaker':
       return { ...base, unitCapacity: 1e9, baseLatency: 0.0002, passThrough: true };
     case 'app':
@@ -57,9 +59,10 @@ export function profileFor(node: NodeSpec): Profile {
         ...base,
         unitCapacity: 150 * mult,
         units: numberParam(p, 'instances', 1),
-        weights: { static: 0.3, read: 1, write: 1.5 },
+        weights: { static: 0.5, read: 1, write: 1.5 },
         baseLatency: 0.025,
         threadsPerUnit: 16 * mult,
+        serversPerUnit: 2 * mult,
         maxQueueSeconds: 2,
         crashable: true,
         monthlyPerUnit: 30 * mult,
@@ -71,6 +74,7 @@ export function profileFor(node: NodeSpec): Profile {
         units: numberParam(p, 'instances', 2),
         baseLatency: 0.04,
         threadsPerUnit: 16 * mult,
+        serversPerUnit: 2 * mult,
         maxQueueSeconds: 1,
         crashable: true,
         monthlyPerUnit: 30 * mult,
@@ -81,6 +85,7 @@ export function profileFor(node: NodeSpec): Profile {
         unitCapacity: 50_000,
         units: numberParam(p, 'nodes', 1),
         baseLatency: 0.001,
+        serversPerUnit: 1,
         maxQueueSeconds: 0.5,
         crashable: true,
         monthlyPerUnit: 40,
@@ -91,6 +96,7 @@ export function profileFor(node: NodeSpec): Profile {
         unitCapacity: 2000 * mult,
         weights: DATABASE_WEIGHTS,
         baseLatency: 0.004,
+        serversPerUnit: 4 * mult,
         connectionLimit: numberParam(p, 'maxConnections', 300),
         monthlyPerUnit: 120 * mult,
       };
@@ -101,6 +107,7 @@ export function profileFor(node: NodeSpec): Profile {
         units: numberParam(p, 'count', 2),
         weights: DATABASE_WEIGHTS,
         baseLatency: 0.004,
+        serversPerUnit: 4 * mult,
         monthlyPerUnit: 120 * mult,
       };
     case 'shard':
@@ -109,6 +116,7 @@ export function profileFor(node: NodeSpec): Profile {
         unitCapacity: 2000 * mult,
         weights: DATABASE_WEIGHTS,
         baseLatency: 0.004,
+        serversPerUnit: 4 * mult,
         monthlyPerUnit: 120 * mult * numberParam(p, 'shards', 4),
       };
     case 'objectStorage':
@@ -116,7 +124,7 @@ export function profileFor(node: NodeSpec): Profile {
     case 'search':
       return { ...base, unitCapacity: 400, units: numberParam(p, 'nodes', 2), baseLatency: 0.03, monthlyPerUnit: 90 };
     case 'queue':
-      return { ...base, unitCapacity: 20_000, baseLatency: 0.005, perMillionRequests: 0.4 };
+      return { ...base, unitCapacity: 20_000, baseLatency: 0.005, monthlyPerUnit: 100, perMillionRequests: 0.05 };
     case 'external':
       return {
         ...base,
