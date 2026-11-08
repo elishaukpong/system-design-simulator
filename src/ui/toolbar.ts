@@ -14,6 +14,7 @@ export interface ToolbarActions {
   exportDesign(): void;
   importDesign(): void;
   clear(): void;
+  openScenarios(): void;
 }
 
 const SPEEDS = [1, 2, 5, 10];
@@ -76,6 +77,7 @@ export class Toolbar {
     root.append(
       h('div', { class: 'brand', title: 'System Design Simulator' }, h('span', { class: 'brand-mark' }), 'SysSim'),
       h('div', { class: 'tool-sep' }),
+      h('button', { class: 'scenarios-button', title: 'Graded design challenges', on: { click: () => actions.openScenarios() } }, '🎯 Scenarios'),
       templateSelect,
       h('div', { class: 'traffic' }, h('label', {}, 'Traffic'), this.slider, this.trafficValue, this.shapeSelect),
       h('div', { class: 'tool-group' }, this.runButton, speeds, h('button', { title: 'Reset the simulation (R). Keeps the design.', on: { click: () => actions.resetSim() } }, '↺'), this.clock),
@@ -93,6 +95,13 @@ export class Toolbar {
 
     store.onTraffic(() => this.syncTraffic());
     this.syncTraffic();
+  }
+
+  setScripted(scripted: boolean): void {
+    this.slider.disabled = scripted;
+    this.shapeSelect.disabled = scripted;
+    if (scripted) this.trafficValue.textContent = 'scripted';
+    else this.syncTraffic();
   }
 
   update(running: boolean, speed: number, connectMode: boolean, t: number): void {

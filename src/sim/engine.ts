@@ -331,7 +331,7 @@ export class Simulation {
     let latencyWeighted = 0;
     let p99 = 0;
     let shed = 0;
-    for (const node of nodes) shed += metrics[node.id]?.shedRps ?? 0;
+    for (const node of nodes) if (node.kind === 'gateway') shed += metrics[node.id]?.shedRps ?? 0;
 
     for (const client of clientNodes) {
       const st = this.stateFor(client);

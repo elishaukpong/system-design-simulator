@@ -11,7 +11,9 @@ export interface SavedState {
 
 type Listener = () => void;
 
-const STORAGE_KEY = 'sds:design:v1';
+export const SANDBOX_KEY = 'sds:design:v1';
+
+export type ParamLocks = Partial<Record<ComponentKind, Record<string, ParamValue>>>;
 
 export class Store {
   design: Design = { nodes: [], edges: [] };
@@ -21,6 +23,9 @@ export class Store {
   private selectionListeners = new Set<Listener>();
   private trafficListeners = new Set<Listener>();
   private counter = 0;
+  private storageKey = SANDBOX_KEY;
+  private paramLocks: ParamLocks = {};
+  editingLocked = false;
 
   onDesign(fn: Listener): void {
     this.designListeners.add(fn);
@@ -42,7 +47,25 @@ export class Store {
     return this.design.edges.find((e) => e.id === id);
   }
 
-  addNode(kind: ComponentKind, x: number, z: number): NodeSpec {
+  useStorage(key: string): void {
+    this.storageKey = key;
+  }
+
+  setParamLocks(locks: ParamLocks): void {
+    this.paramLocks = locks;
+    for (const node of this.design.nodes) {
+      const locked = locks[node.kind];
+      if (locked) node.params = { ...node.params, ...locked };
+    }
+    this.emitDesign();
+  }
+
+  isParamLocked(node: NodeSpec, key: string): boolean {
+    return !!node.locked || key in (this.paramLocks[node.kind] ?? {});
+  }
+
+  addNode(kind: ComponentKind, x: number, z: number): NodeSpec | null {
+    if (this.editingLocked) return null;
     const sameKind = this.design.nodes.filter((n) => n.kind === kind).length;
     const node: NodeSpec = {
       id: this.nextId(kind),
@@ -50,7 +73,7 @@ export class Store {
       name: sameKind ? `${CATALOG[kind].label} ${sameKind + 1}` : CATALOG[kind].label,
       x,
       z,
-      params: defaultParams(kind),
+      params: { ...defaultParams(kind), ...this.paramLocks[kind] },
     };
     this.design = { ...this.design, nodes: [...this.design.nodes, node] };
     this.emitDesign();
@@ -60,7 +83,7 @@ export class Store {
 
   moveNode(id: string, x: number, z: number): void {
     const node = this.node(id);
-    if (!node || (node.x === x && node.z === z)) return;
+    if (this.editingLocked || !node || (node.x === x && node.z === z)) return;
     node.x = x;
     node.z = z;
     this.emitDesign();
@@ -71,6 +94,7 @@ export class Store {
   }
 
   removeNode(id: string): void {
+    if (this.editingLocked || this.node(id)?.locked) return;
     this.design = {
       nodes: this.design.nodes.filter((n) => n.id !== id),
       edges: this.design.edges.filter((e) => e.from !== id && e.to !== id),
@@ -80,7 +104,7 @@ export class Store {
   }
 
   connect(from: string, to: string): boolean {
-    if (from === to) return false;
+    if (this.editingLocked || from === to) return false;
     if (this.design.edges.some((e) => (e.from === from && e.to === to) || (e.from === to && e.to === from))) return false;
     const edge: EdgeSpec = { id: this.nextId('edge'), from, to };
     this.design = { ...this.design, edges: [...this.design.edges, edge] };
@@ -89,6 +113,7 @@ export class Store {
   }
 
   removeEdge(id: string): void {
+    if (this.editingLocked) return;
     this.design = { ...this.design, edges: this.design.edges.filter((e) => e.id !== id) };
     if (this.selection?.id === id) this.select(null);
     this.emitDesign();
@@ -96,21 +121,21 @@ export class Store {
 
   reverseEdge(id: string): void {
     const edge = this.edge(id);
-    if (!edge) return;
+    if (this.editingLocked || !edge) return;
     [edge.from, edge.to] = [edge.to, edge.from];
     this.emitDesign();
   }
 
   setParam(id: string, key: string, value: ParamValue): void {
     const node = this.node(id);
-    if (!node) return;
+    if (this.editingLocked || !node || this.isParamLocked(node, key)) return;
     node.params = { ...node.params, [key]: value };
     this.emitDesign();
   }
 
   rename(id: string, name: string): void {
     const node = this.node(id);
-    if (!node) return;
+    if (this.editingLocked || !node || node.locked) return;
     node.name = name;
     this.emitDesign();
   }
@@ -147,7 +172,7 @@ export class Store {
 
   restore(): boolean {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(this.storageKey);
       if (!raw) return false;
       const parsed = parseSaved(raw);
       if (!parsed) return false;
@@ -160,7 +185,7 @@ export class Store {
 
   private persist(): void {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.serialize()));
+      localStorage.setItem(this.storageKey, JSON.stringify(this.serialize()));
     } catch {
       // Storage can be unavailable (private mode, blocked site data); the design still works in memory.
     }

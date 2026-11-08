@@ -68,6 +68,7 @@ export class Inspector {
     const nameInput = h('input', {
       class: 'insp-name',
       value: node.name,
+      disabled: node.locked || this.store.editingLocked,
       on: { change: () => this.store.rename(node.id, nameInput.value.trim() || def.label) },
     });
 
@@ -77,7 +78,8 @@ export class Inspector {
     this.live = h('div');
     const chaos = h('div', { class: 'actions' }, h('button', { class: 'danger', title: 'Kill every instance for 30s', on: { click: () => this.actions.kill(node.id) } }, '💥 Kill'));
     if (node.kind === 'cache') chaos.append(h('button', { title: 'Empty the cache', on: { click: () => this.actions.flush(node.id) } }, '🧹 Flush'));
-    chaos.append(h('button', { class: 'danger', on: { click: () => this.store.removeNode(node.id) } }, 'Delete'));
+    if (!node.locked && !this.store.editingLocked) chaos.append(h('button', { class: 'danger', on: { click: () => this.store.removeNode(node.id) } }, 'Delete'));
+    if (node.locked) chaos.append(h('span', { class: 'muted small' }, '🔒 Part of the scenario. You cannot change it.'));
 
     this.root.append(
       h('h2', { class: 'panel-title' }, def.label, h('span', { class: 'palette-swatch', style: `background:${hex(def.color)};width:auto;height:auto;padding:1px 6px` }, def.short)),
@@ -164,6 +166,16 @@ export class Inspector {
   }
 
   private field(node: NodeSpec, param: ParamDef): HTMLElement {
+    const el = this.control(node, param);
+    const locked = this.store.isParamLocked(node, param.key);
+    if (locked || this.store.editingLocked) {
+      el.querySelectorAll('input, select').forEach((input) => ((input as HTMLInputElement).disabled = true));
+      if (locked) el.querySelector('.field-label')?.append(h('span', { class: 'lock', title: 'Set by the scenario' }, ' 🔒'));
+    }
+    return el;
+  }
+
+  private control(node: NodeSpec, param: ParamDef): HTMLElement {
     const current = node.params[param.key];
     if (param.type === 'boolean') {
       const input = h('input', { type: 'checkbox', checked: Boolean(current), on: { change: () => this.store.setParam(node.id, param.key, input.checked) } });

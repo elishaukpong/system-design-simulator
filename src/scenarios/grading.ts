@@ -3,8 +3,12 @@ import { boolParam, numberParam } from '../sim/catalog';
 import type { Design } from '../sim/types';
 import type { ChaosLogEntry, Criterion, CriterionResult, GradedCriterion, RunResult, Sample, Scenario, Tradeoff, Wall } from './types';
 
+export function evaluateAll(scenario: Scenario, samples: Sample[]): CriterionResult[] {
+  return scenario.criteria.map((c) => evaluate(c, samples));
+}
+
 export function grade(scenario: Scenario, design: Design, samples: Sample[], chaos: ChaosLogEntry[]): RunResult {
-  const criteria = scenario.criteria.map((c) => evaluate(c, samples));
+  const criteria = evaluateAll(scenario, samples);
   const core = criteria.filter((c) => c.role === 'core');
   const budget = criteria.filter((c) => c.role === 'budget');
   const bonus = criteria.filter((c) => c.role === 'bonus');
@@ -62,7 +66,8 @@ function evaluate({ criterion, role }: GradedCriterion, samples: Sample[]): Crit
       return result(pct(value, 2), value >= criterion.min);
     }
     case 'p99': {
-      const within = samples.length ? samples.filter((s) => s.p99 * 1000 <= criterion.maxMs).length / samples.length : 0;
+      const fastAndServing = (s: Sample) => s.p99 * 1000 <= criterion.maxMs && (s.offered <= 0 || s.success / s.offered >= 0.5);
+      const within = samples.length ? samples.filter(fastAndServing).length / samples.length : 0;
       const worst = Math.max(0, ...samples.map((s) => s.p99));
       return result(`${Math.round(within * 100)}% of the time (worst ${ms(worst)})`, within >= criterion.withinPct);
     }

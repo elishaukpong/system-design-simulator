@@ -39,11 +39,13 @@ export class Interaction {
   get modeLabel(): string | null {
     if (this.mode.type === 'placing') return 'Click the grid to place. Esc or right-click to stop.';
     if (this.mode.type === 'connecting') return 'Release on the component to connect to.';
+    if (this.store.editingLocked) return 'Test running. The design is locked until it ends.';
     if (this.connectMode) return 'Connect mode: drag from one component to another.';
     return null;
   }
 
   startPlacing(kind: ComponentKind, fromPaletteDrag: boolean): void {
+    if (this.store.editingLocked) return;
     this.mode = { type: 'placing', kind, fromPaletteDrag };
     this.emit();
   }
@@ -71,6 +73,11 @@ export class Interaction {
     }
 
     const nodeId = this.scene.pickNode(e.clientX, e.clientY);
+    if (nodeId && this.store.editingLocked) {
+      this.store.select({ type: 'node', id: nodeId });
+      return;
+    }
+
     if (nodeId) {
       this.scene.controls.enabled = false;
       if (this.connectMode || e.shiftKey) {

@@ -2,12 +2,18 @@ import { Interaction } from './interaction';
 import { SceneView } from './render/scene';
 import { diagnose } from './sim/analysis';
 import { Simulation } from './sim/engine';
-import { parseSaved, Store } from './state/store';
+import { peakRps, scenarioById } from './scenarios/catalog';
+import { loadProgress, recordResult } from './scenarios/progress';
+import { ScenarioRun } from './scenarios/runner';
+import type { RunResult, Scenario } from './scenarios/types';
+import { parseSaved, SANDBOX_KEY, Store, type SavedState } from './state/store';
 import { buildTemplate } from './state/templates';
 import { h, isTyping } from './ui/dom';
 import { DiagnosisPanel, EventLog, MetricsStrip } from './ui/hud';
+import { openDebrief } from './ui/debrief';
 import { Inspector } from './ui/inspector';
 import { Palette } from './ui/palette';
+import { BriefPanel, openScenarioPicker } from './ui/scenarios';
 import { Toolbar } from './ui/toolbar';
 
 const SIM_STEP = 0.1;
@@ -22,6 +28,10 @@ const interaction = new Interaction(viewport, scene, store);
 let running = false;
 let speed = 1;
 let simAccumulator = 0;
+let scenario: Scenario | null = null;
+let run: ScenarioRun | null = null;
+let lastResult: RunResult | null = null;
+const MODE_KEY = 'sds:mode';
 
 const palette = new Palette(document.getElementById('palette')!, (kind, event) => {
   interaction.startPlacing(kind, event.pointerType !== 'touch');
@@ -29,7 +39,9 @@ const palette = new Palette(document.getElementById('palette')!, (kind, event) =
 
 const toolbar = new Toolbar(document.getElementById('toolbar')!, store, {
   loadTemplate: (id) => {
+    if (run) return;
     store.load(buildTemplate(id));
+    if (scenario) store.setParamLocks(scenarioLocks(scenario));
     resetSim();
     scene.fit(store.design);
   },
@@ -43,8 +55,12 @@ const toolbar = new Toolbar(document.getElementById('toolbar')!, store, {
   fit: () => scene.fit(store.design),
   exportDesign: () => openJsonDialog('export'),
   importDesign: () => openJsonDialog('import'),
+  openScenarios: () => {
+    if (run) return;
+    openScenarioPicker(loadProgress(), enterScenario);
+  },
   clear: () => {
-    if (!window.confirm('Remove every component from the canvas?')) return;
+    if (run || !window.confirm('Remove every component from the canvas?')) return;
     store.load(buildTemplate('blank'));
     resetSim();
   },
@@ -58,6 +74,25 @@ const metrics = new MetricsStrip(document.getElementById('metrics')!);
 const diagnosis = new DiagnosisPanel(document.getElementById('diagnosis')!, store);
 const events = new EventLog(document.getElementById('events')!);
 const hints = document.getElementById('hints')!;
+const brief = new BriefPanel(document.getElementById('brief')!, {
+  startTest,
+  abortTest,
+  resetDesign: () => {
+    if (!scenario || !window.confirm('Throw this design away and start the scenario over?')) return;
+    store.load(scenarioStart(scenario));
+    store.setParamLocks(scenarioLocks(scenario));
+    resetSim();
+    scene.fit(store.design);
+  },
+  exit: exitScenario,
+  showLastResult: () => {
+    if (scenario && lastResult) openDebrief(scenario, lastResult, debriefActions);
+  },
+});
+const debriefActions = {
+  retry: () => startTest(),
+  pickScenario: () => openScenarioPicker(loadProgress(), enterScenario),
+};
 
 store.onDesign(() => {
   sim.setDesign(store.design);
@@ -70,12 +105,120 @@ interaction.onChange(() => {
   syncChrome();
 });
 
-if (!store.restore()) store.load(buildTemplate('monolith'));
-sim.setDesign(store.design);
-sim.setTraffic(store.traffic);
-scene.syncDesign(store.design);
-scene.fit(store.design);
-syncChrome();
+const savedMode = readMode();
+if (savedMode && scenarioById(savedMode)) {
+  enterScenario(savedMode);
+} else {
+  if (!store.restore()) store.load(buildTemplate('monolith'));
+  sim.setDesign(store.design);
+  sim.setTraffic(store.traffic);
+  scene.syncDesign(store.design);
+  scene.fit(store.design);
+  syncChrome();
+}
+
+function scenarioLocks(s: Scenario) {
+  return { ...s.lockedParams, clients: s.clients };
+}
+
+function scenarioStart(s: Scenario): SavedState {
+  return { version: 1, design: s.start(), traffic: { peakRps: Math.round(peakRps(s)), shape: 'steady' } };
+}
+
+function enterScenario(id: string): void {
+  const next = scenarioById(id);
+  if (!next) return;
+  if (run) abortTest();
+  scenario = next;
+  lastResult = null;
+  store.useStorage(`sds:scenario:${id}`);
+  if (!store.restore()) store.load(scenarioStart(next));
+  store.setParamLocks(scenarioLocks(next));
+  writeMode(id);
+  resetSim();
+  scene.fit(store.design);
+  renderBrief();
+}
+
+function exitScenario(): void {
+  if (run) abortTest();
+  scenario = null;
+  lastResult = null;
+  store.setParamLocks({});
+  store.useStorage(SANDBOX_KEY);
+  if (!store.restore()) store.load(buildTemplate('monolith'));
+  writeMode(null);
+  resetSim();
+  scene.fit(store.design);
+  renderBrief();
+}
+
+function startTest(): void {
+  if (!scenario) return;
+  interaction.cancel();
+  run = new ScenarioRun(scenario, store.design, sim);
+  store.editingLocked = true;
+  run.start();
+  simAccumulator = 0;
+  metrics.reset();
+  speed = Math.max(speed, 5);
+  running = true;
+  toolbar.setScripted(true);
+  inspector.render();
+  renderBrief();
+  syncChrome();
+}
+
+function abortTest(): void {
+  if (!run) return;
+  run.stop();
+  run = null;
+  store.editingLocked = false;
+  toolbar.setScripted(false);
+  running = false;
+  sim.setDesign(store.design);
+  sim.reset();
+  inspector.render();
+  renderBrief();
+  syncChrome();
+}
+
+function finishTest(): void {
+  if (!run || !run.result || !scenario) return;
+  const result = run.result;
+  run = null;
+  lastResult = result;
+  recordResult(result);
+  store.editingLocked = false;
+  running = false;
+  toolbar.setScripted(false);
+  sim.setDesign(store.design);
+  inspector.render();
+  renderBrief();
+  syncChrome();
+  openDebrief(scenario, result, debriefActions);
+}
+
+function renderBrief(): void {
+  brief.render(scenario, run, scenario ? loadProgress()[scenario.id] : undefined, lastResult !== null);
+}
+
+function readMode(): string | null {
+  try {
+    return localStorage.getItem(MODE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeMode(id: string | null): void {
+  try {
+    if (id) localStorage.setItem(MODE_KEY, id);
+    else localStorage.removeItem(MODE_KEY);
+  } catch {
+    // Without storage the app simply opens in the sandbox next time.
+  }
+}
 
 function setRunning(next: boolean): void {
   running = next;
@@ -83,6 +226,10 @@ function setRunning(next: boolean): void {
 }
 
 function resetSim(): void {
+  if (run) {
+    abortTest();
+    return;
+  }
   sim.setDesign(store.design);
   sim.setTraffic(store.traffic);
   sim.reset();
@@ -207,10 +354,17 @@ function frame(now: number): void {
     simAccumulator += frameDt * speed;
     let steps = 0;
     while (simAccumulator >= SIM_STEP && steps < MAX_STEPS_PER_FRAME) {
-      sim.step(SIM_STEP);
+      const stepped = sim.step(SIM_STEP);
       simAccumulator -= SIM_STEP;
       simAdvanced += SIM_STEP;
       steps++;
+      if (run) {
+        run.afterStep(stepped);
+        if (run.done) {
+          finishTest();
+          break;
+        }
+      }
     }
     if (steps === MAX_STEPS_PER_FRAME) simAccumulator = 0;
   }
@@ -226,6 +380,7 @@ function frame(now: number): void {
     if (snap) diagnosis.render(diagnose(store.design, snap), running);
     inspector.refresh(snap);
     events.render(sim.events);
+    brief.refresh(run);
     toolbar.update(running, speed, interaction.connectMode, sim.t);
   }
 

@@ -23,6 +23,18 @@ npm run build
 
 Chaos: select a component and **Kill** it, or **Flush** a cache.
 
+## Scenarios
+
+**🎯 Scenarios** opens eight graded challenges, from *Launch day* to *Telemetry ingest*. Each one fixes the traffic mix, scripts the load and the chaos (a cache flush, a provider outage, a zone going dark), and sets the targets:
+
+- **Must**: availability and p99 latency. Pass both for ★.
+- **Budget**: average monthly cost. ★★.
+- **Bonus**: the scenario's twist (availability during the chaos, replica lag, processing lag, retry amplification). ★★★.
+
+Design freely, then **Start test**. The design locks, the script plays, the checks update live. The debrief shows offered vs served traffic, p99 against its target, a strip of which component was the binding pressure over time, what gave way in order, and the trade-offs your design accepted.
+
+Each scenario keeps its own saved design, separate from the sandbox. Every scenario has a reference solution in `tests/scenarios.test.ts` that earns three stars, and a test that its starting design fails.
+
 | Keys | |
 |---|---|
 | `Space` | run / pause |
@@ -39,7 +51,7 @@ Mouse: drag to pan, right-drag to rotate, scroll to zoom.
 
 Traffic is a flow, not individual requests, so 1M rps costs the same to simulate as 10. The particles are a visual sample.
 
-Every component is a queue: utilisation = load / capacity, latency climbs as utilisation approaches 1, and above it a backlog builds, requests time out, and errors start. On top of that:
+Every component is a queue: utilisation = load / capacity, latency climbs as utilisation approaches 1 (an M/M/c approximation, so a fleet queues like a pool), and above it a backlog builds, requests time out, and errors start. On top of that:
 
 - **Worker pools and connection limits** (Little's law). A slow dependency fills the app's worker pool while its CPU sits idle, and the diagnosis blames the dependency, not the app.
 - **Crashes**: app servers, workers and cache nodes under sustained CPU overload lose instances one at a time, and the survivors inherit the load.
@@ -58,6 +70,7 @@ Capacities and prices are rough, order-of-magnitude numbers (`src/sim/profiles.t
 
 ```
 src/sim/       engine, component catalog, capacity profiles, diagnosis (no DOM, unit-tested)
+src/scenarios/ scenario catalog, scripted runner, grading, progress
 src/render/    Three.js scene and low-poly component models
 src/state/     design store, persistence, templates
 src/ui/        palette, toolbar, inspector, HUD
