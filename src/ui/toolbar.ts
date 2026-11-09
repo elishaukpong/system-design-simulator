@@ -28,6 +28,8 @@ export class Toolbar {
   private runButton: HTMLButtonElement;
   private connectButton: HTMLButtonElement;
   private speedButton: HTMLButtonElement;
+  private speedButtons = new Map<number, HTMLButtonElement>();
+  private fittedWidth = -1;
   private speed = 1;
   private slider: HTMLInputElement;
   private trafficValue: HTMLInputElement;
@@ -99,6 +101,19 @@ export class Toolbar {
       },
       '1×',
     );
+    const speeds = h('div', { class: 'tool-group speed-group' });
+    for (const s of SPEEDS) {
+      const button = h('button', { title: `Simulation speed ${s}×`, on: { click: () => actions.setSpeed(s) } }, `${s}×`);
+      this.speedButtons.set(s, button);
+      speeds.append(button);
+    }
+    const extras = h(
+      'div',
+      { class: 'tool-group tool-extras' },
+      h('button', { title: 'Export the design as an image or JSON', on: { click: () => actions.exportDesign() } }, 'Export'),
+      h('button', { title: 'Import a design from JSON', on: { click: () => actions.importDesign() } }, 'Import'),
+      h('button', { class: 'danger', title: 'Remove everything', on: { click: () => actions.clear() } }, 'Clear'),
+    );
     const menu = h(
       'details',
       { class: 'more-menu' },
@@ -114,6 +129,11 @@ export class Toolbar {
     document.addEventListener('click', (event) => {
       if (menu.open && !menu.contains(event.target as Node)) menu.open = false;
     });
+    menu.addEventListener('toggle', () => {
+      if (!menu.open) return;
+      const list = menu.querySelector<HTMLElement>('.more-menu-list')!;
+      list.style.top = `${menu.getBoundingClientRect().bottom + 6}px`;
+    });
     this.clock = h('span', { class: 'clock', title: 'Simulated time' }, 't=0s');
     this.connectButton = h('button', { title: 'Connect mode (C): drag from one component to another', on: { click: () => actions.toggleConnect() } }, '⤳ Connect');
 
@@ -125,19 +145,35 @@ export class Toolbar {
       h('button', { class: 'scenarios-button', title: 'Graded design challenges', on: { click: () => actions.openScenarios() } }, '🎯 Scenarios'),
       templateSelect,
       h('div', { class: 'traffic' }, h('label', {}, 'Traffic'), this.slider, this.trafficValue, this.shapeSelect),
-      h('div', { class: 'tool-group' }, this.runButton, this.speedButton, h('button', { title: 'Reset the simulation (R). Keeps the design.', on: { click: () => actions.resetSim() } }, '↺'), this.clock),
+      h('div', { class: 'tool-group' }, this.runButton, speeds, this.speedButton, h('button', { title: 'Reset the simulation (R). Keeps the design.', on: { click: () => actions.resetSim() } }, '↺'), this.clock),
       h('div', { class: 'tool-sep' }),
       h(
         'div',
         { class: 'tool-group' },
         this.connectButton,
         h('button', { title: 'Fit the design in view (F)', on: { click: () => actions.fit() } }, '⤢'),
+        extras,
         menu,
       ),
     );
 
+    new ResizeObserver(() => this.fit(root)).observe(root);
+    window.addEventListener('resize', () => this.fit(root));
+    document.fonts?.ready.then(() => this.fit(root, true));
+
     store.onTraffic(() => this.syncTraffic());
     this.syncTraffic();
+  }
+
+  private fit(root: HTMLElement, force = false): void {
+    if (!force && root.clientWidth === this.fittedWidth) return;
+    this.fittedWidth = root.clientWidth;
+    const levels = ['compact-1', 'compact-2', 'compact-3', 'compact-wrap'];
+    root.classList.remove(...levels);
+    for (const level of levels) {
+      if (root.scrollWidth <= root.clientWidth + 1) return;
+      root.classList.add(level);
+    }
   }
 
   setScripted(scripted: boolean): void {
@@ -154,6 +190,7 @@ export class Toolbar {
     this.speed = speed;
     this.speedButton.textContent = `${speed}×`;
     this.speedButton.classList.toggle('active', speed > 1);
+    for (const [s, button] of this.speedButtons) button.classList.toggle('active', s === speed);
     this.connectButton.classList.toggle('active', connectMode);
     this.clock.textContent = `t=${formatTime(t)}`;
   }

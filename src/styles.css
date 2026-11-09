@@ -36,7 +36,7 @@ body {
 body {
   display: grid;
   grid-template-columns: 210px 1fr 340px;
-  grid-template-rows: 56px 1fr;
+  grid-template-rows: auto 1fr;
   grid-template-areas:
     'toolbar toolbar toolbar'
     'palette viewport sidebar';
@@ -96,6 +96,7 @@ select {
 /* Toolbar */
 #toolbar {
   grid-area: toolbar;
+  min-height: 56px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -218,7 +219,7 @@ input[type='range'] {
 
 .more-menu-list {
   position: fixed;
-  top: 50px;
+  top: 56px;
   right: 14px;
   z-index: 50;
   display: flex;
@@ -1402,29 +1403,48 @@ svg.chart .strip-label { fill: #0b1120; font: 600 10.5px Inter, sans-serif; }
 }
 
 @media (max-width: 1360px) {
-  #toolbar {
-    gap: 8px;
-  }
   #metrics {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
-  .traffic label {
-    display: none;
-  }
-  .traffic input[type='range'] {
-    width: 96px;
-  }
 }
 
-@media (max-width: 1240px) {
-  #toolbar {
-    flex-wrap: wrap;
-    row-gap: 6px;
-    padding: 6px 14px;
-  }
-  body {
-    grid-template-rows: auto 1fr;
-  }
+.more-menu,
+.speed-button {
+  display: none;
+}
+
+#toolbar.compact-3 .tool-extras {
+  display: none;
+}
+
+#toolbar.compact-3 .more-menu {
+  display: block;
+}
+
+#toolbar.compact-1 .speed-group {
+  display: none;
+}
+
+#toolbar.compact-1 .speed-button {
+  display: inline-block;
+}
+
+#toolbar.compact-2 {
+  gap: 8px;
+}
+
+#toolbar.compact-2 .traffic label {
+  display: none;
+}
+
+#toolbar.compact-2 .traffic input[type='range'] {
+  width: 96px;
+}
+
+#toolbar.compact-wrap {
+  flex-wrap: wrap;
+  row-gap: 6px;
+  padding: 6px 14px;
 }
 
 @media (max-width: 1100px) {
