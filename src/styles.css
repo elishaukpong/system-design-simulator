@@ -375,16 +375,28 @@ input[type='range'] {
   padding: 1px 7px;
 }
 
-#metrics {
+#dock {
   position: absolute;
   left: 12px;
   right: 12px;
   bottom: 12px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+#metrics {
+  flex: 1;
+  min-width: 0;
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 8px;
-  pointer-events: none;
-  z-index: 2;
+}
+
+#dock:has(#learn:not([hidden])) #metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .metric {
@@ -484,10 +496,15 @@ input[type='range'] {
 }
 
 #learn {
-  flex: none;
-  max-height: 60%;
+  flex: 0 0 380px;
+  max-height: min(48vh, 420px);
   overflow-y: auto;
-  background: linear-gradient(180deg, rgba(167, 139, 250, 0.08), transparent 60%);
+  padding: 12px 14px;
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(167, 139, 250, 0.1), transparent 70%), rgba(14, 21, 37, 0.94);
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
 }
 
 .learn-days {
@@ -1716,5 +1733,18 @@ svg.chart .strip-label { fill: #0b1120; font: 600 10.5px Inter, sans-serif; }
   }
   .debrief-cols {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1360px) {
+  #dock {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  #learn {
+    flex: none;
+    align-self: flex-start;
+    width: min(100%, 480px);
+    max-height: 36vh;
   }
 }
