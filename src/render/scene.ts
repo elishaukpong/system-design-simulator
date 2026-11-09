@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { numberParam } from '../sim/catalog';
 import { REGIONS, regionAt, regionRtt } from '../sim/regions';
-import { profileFor } from '../sim/profiles';
+import { isAutoscaled, profileFor } from '../sim/profiles';
 import type { Selection } from '../state/store';
 import type { ComponentKind, Design, EdgeSpec, NodeMetrics, NodeSpec, SimSnapshot, TrafficClass } from '../sim/types';
 import { TRAFFIC_CLASSES, totalFlow } from '../sim/types';
@@ -355,8 +355,9 @@ export class SceneView {
     const refreshLabels = this.labelTimer <= 0;
     if (refreshLabels) this.labelTimer = 0.2;
 
-    for (const [id, view] of this.nodes) {
+    for (const [id, current] of this.nodes) {
       const m = snap?.nodes[id] ?? null;
+      const view = this.matchLiveInstances(current, m);
       this.animateNode(view, m, frameDt, running);
       if (refreshLabels) this.updateLabel(view, m);
     }
@@ -481,12 +482,22 @@ export class SceneView {
       const shown = model.units.length;
       const scale = m.totalInstances > 0 ? shown / Math.max(shown, m.totalInstances) : 1;
       const healthyShown = Math.round(m.healthyInstances * (m.totalInstances > shown ? scale : 1));
+      const bootingShown = Math.round(m.bootingInstances * (m.totalInstances > shown ? scale : 1));
       model.units.forEach((unit, i) => {
         const mat = unit.material as THREE.MeshStandardMaterial;
-        const up = i < healthyShown;
-        mat.color.setHex(up ? colorFor(model.kind) : 0x3f1d1d);
-        mat.emissive.setHex(up ? colorFor(model.kind) : 0x7f1d1d);
-        mat.emissiveIntensity = up ? 0.12 + Math.min(0.5, utilization * 0.3) : 0.3 + 0.3 * Math.sin(this.time * 6 + i);
+        if (i < healthyShown) {
+          mat.color.setHex(colorFor(model.kind));
+          mat.emissive.setHex(colorFor(model.kind));
+          mat.emissiveIntensity = 0.12 + Math.min(0.5, utilization * 0.3);
+        } else if (i < healthyShown + bootingShown) {
+          mat.color.setHex(0x334155);
+          mat.emissive.setHex(colorFor(model.kind));
+          mat.emissiveIntensity = 0.08 + 0.08 * Math.sin(this.time * 4 + i);
+        } else {
+          mat.color.setHex(0x3f1d1d);
+          mat.emissive.setHex(0x7f1d1d);
+          mat.emissiveIntensity = 0.3 + 0.3 * Math.sin(this.time * 6 + i);
+        }
       });
     }
 
@@ -633,8 +644,21 @@ export class SceneView {
     if (this.selection?.type === 'node') this.nodes.get(this.selection.id)?.label.element.classList.add('selected');
   }
 
-  private createNodeView(spec: NodeSpec, signature: string): NodeView {
-    const unitCount = spec.kind === 'shard' ? numberParam(spec.params, 'shards', 4) : profileFor(spec).units;
+  private matchLiveInstances(view: NodeView, m: NodeMetrics | null): NodeView {
+    if (!m || !isAutoscaled(view.spec) || m.totalInstances <= 0) return view;
+    if (view.model.units.length === visibleUnits(view.spec.kind, m.totalInstances)) return view;
+    this.removeNodeView(view);
+    const rebuilt = this.createNodeView(view.spec, view.signature, m.totalInstances);
+    rebuilt.model.root.position.set(view.spec.x, 0, view.spec.z);
+    rebuilt.labelName.textContent = view.spec.name;
+    rebuilt.labelStat.textContent = view.labelStat.textContent;
+    this.nodes.set(view.spec.id, rebuilt);
+    this.applySelection();
+    return rebuilt;
+  }
+
+  private createNodeView(spec: NodeSpec, signature: string, liveUnits?: number): NodeView {
+    const unitCount = liveUnits ?? (spec.kind === 'shard' ? numberParam(spec.params, 'shards', 4) : profileFor(spec).units);
     const model = buildModel(spec.kind, unitCount);
     this.scene.add(model.root);
     const element = document.createElement('div');
