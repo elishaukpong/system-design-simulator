@@ -280,7 +280,7 @@ export function templateList(): Array<{ id: string; label: string; blurb: string
 
 export function buildTemplate(id: string): SavedState {
   const template = TEMPLATES.find((t) => t.id === id) ?? TEMPLATES[0];
-  return designState(template.traffic, template.nodes, template.edges);
+  return { ...designState(template.traffic, template.nodes, template.edges), template: template.id };
 }
 
 export function designState(traffic: TrafficSettings, nodes: Template['nodes'], edges: Template['edges']): SavedState {

@@ -7,6 +7,7 @@ export interface SavedState {
   version: 1;
   design: Design;
   traffic: TrafficSettings;
+  template?: string;
 }
 
 type Listener = () => void;
@@ -19,6 +20,7 @@ export class Store {
   design: Design = { nodes: [], edges: [] };
   traffic: TrafficSettings = { peakRps: 200, shape: 'steady' };
   selection: Selection = null;
+  template: string | null = null;
   private designListeners = new Set<Listener>();
   private selectionListeners = new Set<Listener>();
   private trafficListeners = new Set<Listener>();
@@ -174,6 +176,7 @@ export class Store {
   load(state: SavedState): void {
     this.design = structuredClone(state.design);
     this.traffic = { ...state.traffic };
+    this.template = state.template ?? null;
     this.counter = 0;
     this.select(null);
     this.emitDesign();
@@ -181,7 +184,9 @@ export class Store {
   }
 
   serialize(): SavedState {
-    return { version: 1, design: structuredClone(this.design), traffic: { ...this.traffic } };
+    const saved: SavedState = { version: 1, design: structuredClone(this.design), traffic: { ...this.traffic } };
+    if (this.template) saved.template = this.template;
+    return saved;
   }
 
   restore(): boolean {
@@ -231,5 +236,6 @@ export function parseSaved(raw: string): SavedState | null {
     version: 1,
     design: { nodes, edges },
     traffic: { peakRps: data.traffic?.peakRps ?? 200, shape: data.traffic?.shape ?? 'steady' },
+    ...(typeof data.template === 'string' ? { template: data.template } : {}),
   };
 }

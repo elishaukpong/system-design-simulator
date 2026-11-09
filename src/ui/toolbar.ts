@@ -45,7 +45,7 @@ export class Toolbar {
         on: {
           change: () => {
             if (templateSelect.value) actions.loadTemplate(templateSelect.value);
-            templateSelect.value = '';
+            templateSelect.value = store.template ?? '';
           },
         },
       },
@@ -162,6 +162,11 @@ export class Toolbar {
     document.fonts?.ready.then(() => this.fit(root, true));
 
     store.onTraffic(() => this.syncTraffic());
+    const syncTemplate = () => {
+      templateSelect.value = store.template ?? '';
+    };
+    store.onDesign(syncTemplate);
+    syncTemplate();
     this.syncTraffic();
   }
 
