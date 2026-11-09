@@ -37,6 +37,12 @@ const MAIN_STEPS: Step[] = [
       <p>Drag a component to move it. Drag empty space to pan, right-drag to rotate, scroll to zoom. <kbd>Del</kbd> removes whatever is selected.</p>`,
   },
   {
+    id: 'paths',
+    title: 'Split traffic by path',
+    text: `<p>Connect an <strong>API Gateway</strong> to more than one service and each connection shows a <span class="tour-pill">70%</span> pill: the share of the gateway's traffic that goes down that path, like <code>/search</code> or <code>/checkout</code>.</p>
+      <p>Click a connection to change its <strong>Path share</strong>. Each service then gets its own load, scales on its own, and fails on its own.</p>`,
+  },
+  {
     id: 'regions',
     title: 'Regions are places',
     text: `<p>The ground is three regions: <strong>us-east</strong> in the middle, <strong>eu-west</strong> and <strong>ap-south</strong> across the water. Zoom out to see them.</p>
@@ -47,7 +53,7 @@ const MAIN_STEPS: Step[] = [
     title: 'Start from something',
     element: '#toolbar select',
     on: 'bottom',
-    text: `<p>Ten starter designs, from a day-one monolith to a retry storm. Some hold, some are built to break. The description says which.</p>`,
+    text: `<p>Eleven starter designs, from a day-one monolith to a retry storm. Some hold, some are built to break. The description says which.</p>`,
   },
   {
     id: 'traffic',
