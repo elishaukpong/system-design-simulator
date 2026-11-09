@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SCENARIOS, scenarioById } from '../src/scenarios/catalog';
+import { enforceScenario, SCENARIOS, scenarioById } from '../src/scenarios/catalog';
 import { runHeadless } from '../src/scenarios/runner';
 import type { RunResult } from '../src/scenarios/types';
 import { defaultParams } from '../src/sim/catalog';
@@ -295,6 +295,21 @@ const REFERENCE: Record<string, () => Design> = {
     ),
 };
 
+REFERENCE['service-fan-in'] = () => {
+  const d = scenarioById('service-fan-in')!.start();
+  const instances: Record<string, number> = { search: 22, users: 36, checkout: 4 };
+  for (const n of d.nodes) if (n.id in instances) n.params = { ...n.params, instances: instances[n.id] };
+  for (const n of d.nodes) if (n.id === 'catalog-db') n.params = { ...n.params, size: 'large' };
+  d.nodes.push({ id: 'users-lb', kind: 'lb', name: 'users LB', x: 12, z: 6, params: defaultParams('lb') });
+  d.edges = d.edges.filter((e) => e.id !== 'search->users' && e.id !== 'checkout->users');
+  d.edges.push(
+    { id: 'search->users-lb', from: 'search', to: 'users-lb' },
+    { id: 'checkout->users-lb', from: 'checkout', to: 'users-lb' },
+    { id: 'users-lb->users', from: 'users-lb', to: 'users' },
+  );
+  return d;
+};
+
 function run(id: string, design: Design): RunResult {
   return runHeadless(scenarioById(id)!, design, new Simulation());
 }
@@ -302,6 +317,32 @@ function run(id: string, design: Design): RunResult {
 function summary(result: RunResult): string {
   return result.criteria.map((c) => `${c.pass ? '✓' : '✗'} ${c.label}: ${c.measured}`).join(' | ');
 }
+
+describe('service fan-in', () => {
+  const scaled = () => {
+    const d = scenarioById('service-fan-in')!.start();
+    const instances: Record<string, number> = { search: 22, users: 36, checkout: 4 };
+    for (const n of d.nodes) if (n.id in instances) n.params = { ...n.params, instances: instances[n.id] };
+    for (const n of d.nodes) if (n.id === 'catalog-db') n.params = { ...n.params, size: 'large' };
+    return d;
+  };
+
+  it('fails the outage bonus while callers reach users-svc directly', () => {
+    const result = run('service-fan-in', scaled());
+
+    expect(result.criteria.find((c) => c.role === 'bonus')!.pass, summary(result)).toBe(false);
+  });
+
+  it('keeps the call share even when the caller is rewired or the call deleted', () => {
+    const d = scaled();
+    d.edges = d.edges.filter((e) => e.id !== 'checkout->users');
+    d.edges.find((e) => e.id === 'search->users')!.sharePct = 0;
+    const enforced = enforceScenario(scenarioById('service-fan-in')!, d);
+
+    expect(enforced.edges.find((e) => e.id === 'search->users')!.sharePct).toBe(50);
+    expect(enforced.edges.find((e) => e.id === 'checkout->users')!.sharePct).toBe(100);
+  });
+});
 
 describe('scenarios', () => {
   it('every scenario has a reference solution', () => {

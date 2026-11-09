@@ -39,6 +39,44 @@ const REGION_CLIENTS = { staticPct: 20, writePct: 10, retries: 2, timeoutMs: 500
 const GLOBAL_CLIENTS = { staticPct: 30, writePct: 5, retries: 2, timeoutMs: 5000 };
 const WRITE_CLIENTS = { staticPct: 0, writePct: 40, retries: 1, timeoutMs: 5000 };
 const PAYOUT_CLIENTS = { staticPct: 0, writePct: 100, retries: 1, timeoutMs: 10000 };
+const SERVICE_CLIENTS = { staticPct: 0, writePct: 10, retries: 2, timeoutMs: 3000 };
+const SERVICE_APP = { searchPct: 0, externalCallPct: 0 };
+
+function services(): Design {
+  const d = design(
+    [
+      node('clients', 'clients', -1, 0, SERVICE_CLIENTS, { locked: true }),
+      node('gw', 'gateway', 0, 0, { rateLimit: false }, { name: 'API Gateway', locked: true }),
+      node('search', 'app', 1, -1, { ...SERVICE_APP, instances: 4 }, { name: 'search-svc' }),
+      node('users', 'app', 1, 0, { ...SERVICE_APP, instances: 2 }, { name: 'users-svc' }),
+      node('checkout', 'app', 1, 1, { ...SERVICE_APP, instances: 2 }, { name: 'checkout-svc' }),
+      node('catalog-db', 'db', 2, -1, {}, { name: 'Catalog DB' }),
+      node('users-db', 'db', 2, 0, {}, { name: 'Users DB' }),
+      node('orders-db', 'db', 2, 1, {}, { name: 'Orders DB' }),
+    ],
+    [
+      ['clients', 'gw'],
+      ['gw', 'search'],
+      ['gw', 'users'],
+      ['gw', 'checkout'],
+      ['search', 'users'],
+      ['checkout', 'users'],
+      ['search', 'catalog-db'],
+      ['users', 'users-db'],
+      ['checkout', 'orders-db'],
+    ],
+  );
+  const shares: Record<string, number> = { 'gw->search': 70, 'gw->users': 20, 'gw->checkout': 10 };
+  for (const edge of d.edges) {
+    if (edge.id in shares) {
+      edge.sharePct = shares[edge.id];
+      edge.locked = true;
+    }
+    if (edge.id === 'clients->gw') edge.locked = true;
+    if (edge.id === 'search->users') edge.sharePct = 50;
+  }
+  return d;
+}
 
 export const SCENARIOS: Scenario[] = [
   {
@@ -541,16 +579,79 @@ export const SCENARIOS: Scenario[] = [
     ],
     curriculum: ['Day 6 · Idempotency', 'Day 24 · Queues', 'Day 29 · Retries', 'Day 45 · Idempotency keys'],
   },
+  {
+    id: 'service-fan-in',
+    title: 'The 20% service',
+    difficulty: 2,
+    tagline: 'users-svc gets 20% of the traffic. So why is it the first thing to melt?',
+    brief: [
+      'Three services behind one gateway: search takes 70% of requests, users 20%, checkout 10%. Traffic climbs to 3,000 rps.',
+      'But services call each other. Half of all searches call users-svc to personalise results, and every checkout calls it to load the buyer. At t=100s a bad deploy takes out half of users-svc for 40 seconds.',
+      'Keep every path up, and do not pay to scale what does not need it.',
+    ],
+    facts: [
+      '1,500 rps rising to 3,000 by t=60s, 10% writes',
+      'Gateway paths: search 70%, users 20%, checkout 10% (locked)',
+      'search calls users on 50% of requests, checkout on 100%. You can route these calls, not drop them',
+      'Half of users-svc dies at t=100s for 40s',
+      'The gateway health-checks its services. A direct service-to-service call does not.',
+    ],
+    duration: 180,
+    keyframes: [
+      [0, 1500],
+      [60, 3000],
+      [180, 3000],
+    ],
+    clients: SERVICE_CLIENTS,
+    lockedParams: { app: SERVICE_APP },
+    start: services,
+    calls: [
+      { from: 'search', to: 'users', pct: 50 },
+      { from: 'checkout', to: 'users', pct: 100 },
+    ],
+    criteria: [
+      { role: 'core', criterion: { type: 'availability', min: 0.99 } },
+      { role: 'core', criterion: { type: 'p99', maxMs: 400, withinPct: 0.95 } },
+      { role: 'budget', criterion: { type: 'cost', max: 10800 } },
+      { role: 'bonus', criterion: { type: 'chaosAvailability', min: 0.98, from: 100, to: 140 } },
+    ],
+    chaos: [{ at: 100, action: 'kill', target: 'app', node: 'users', fraction: 0.5, seconds: 40, message: 'A bad deploy: half of users-svc is down.' }],
+    hints: [
+      'Count the real load on users-svc: its own 20%, plus half of search, plus all of checkout.',
+      'A service that everyone calls is a single point of failure for everyone. When it slows down, its callers wait, and their worker pools fill up too.',
+      'Scale each service to its own load. Scaling all three the same is the expensive way to pass.',
+      'search and checkout call users-svc directly, so they keep calling the dead half. A load balancer in front of a shared service routes around it.',
+    ],
+    curriculum: ['Day 28 · Failure modes', 'Day 31 · Bulkhead', 'Day 38 · Horizontal scaling', 'Day 47 · Monolith → microservices'],
+  },
+
 ];
 
 export function enforceScenario(scenario: Scenario, d: Design): Design {
+  const ids = new Set(d.nodes.map((n) => n.id));
+  const lockedEdges = scenario.start().edges.filter((e) => e.locked && ids.has(e.from) && ids.has(e.to));
+  const lockedIds = new Set(lockedEdges.map((e) => e.id));
+  const edges = [...d.edges.filter((e) => !lockedIds.has(e.id)).map((e) => ({ ...e })), ...lockedEdges];
+  for (const call of scenario.calls ?? []) {
+    if (!ids.has(call.from) || !ids.has(call.to)) continue;
+    const hop = edges.find((e) => e.from === call.from && reaches(edges, d, e.to, call.to));
+    if (hop) hop.sharePct = call.pct;
+    else edges.push({ id: `${call.from}->${call.to}`, from: call.from, to: call.to, sharePct: call.pct });
+  }
   return {
-    edges: d.edges.map((e) => ({ ...e })),
+    edges,
     nodes: d.nodes.map((n) => {
       const locked = n.kind === 'clients' ? scenario.clients : scenario.lockedParams?.[n.kind];
       return locked ? { ...n, params: { ...n.params, ...locked } } : { ...n, params: { ...n.params } };
     }),
   };
+}
+
+function reaches(edges: Design['edges'], d: Design, from: string, target: string, depth = 0): boolean {
+  if (from === target) return true;
+  const kind = d.nodes.find((n) => n.id === from)?.kind;
+  if (depth > 4 || (kind !== 'lb' && kind !== 'breaker')) return false;
+  return edges.some((e) => e.from === from && reaches(edges, d, e.to, target, depth + 1));
 }
 
 export function scenarioById(id: string): Scenario | undefined {

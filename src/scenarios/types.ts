@@ -23,10 +23,10 @@ export interface GradedCriterion {
 }
 
 export type ChaosEvent =
-  | { at: number; action: 'kill'; target: ComponentKind; seconds: number; fraction?: number; message: string }
+  | { at: number; action: 'kill'; target: ComponentKind; node?: string; seconds: number; fraction?: number; message: string }
   | { at: number; action: 'flush'; target: 'cache'; message: string }
   | { at: number; action: 'region'; region: RegionId; seconds: number; message: string }
-  | { at: number; action: 'degrade'; target: ComponentKind; seconds: number; params: Record<string, ParamValue>; message: string };
+  | { at: number; action: 'degrade'; target: ComponentKind; node?: string; seconds: number; params: Record<string, ParamValue>; message: string };
 
 export interface Spike {
   at: number;
@@ -47,6 +47,7 @@ export interface Scenario {
   clients: Record<string, ParamValue>;
   lockedParams?: Partial<Record<ComponentKind, Record<string, ParamValue>>>;
   start: () => Design;
+  calls?: Array<{ from: string; to: string; pct: number }>;
   criteria: GradedCriterion[];
   chaos: ChaosEvent[];
   hints: string[];

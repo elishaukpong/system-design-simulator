@@ -113,7 +113,7 @@ export class Store {
   }
 
   removeEdge(id: string): void {
-    if (this.editingLocked) return;
+    if (this.editingLocked || this.edge(id)?.locked) return;
     this.design = { ...this.design, edges: this.design.edges.filter((e) => e.id !== id) };
     if (this.selection?.id === id) this.select(null);
     this.emitDesign();
@@ -121,21 +121,21 @@ export class Store {
 
   setEdgeLatency(id: string, ms: number): void {
     const edge = this.edge(id);
-    if (this.editingLocked || !edge) return;
+    if (this.editingLocked || !edge || edge.locked) return;
     edge.latencyMs = ms;
     this.emitDesign();
   }
 
   setEdgeShare(id: string, pct: number): void {
     const edge = this.edge(id);
-    if (this.editingLocked || !edge) return;
+    if (this.editingLocked || !edge || edge.locked) return;
     edge.sharePct = pct;
     this.emitDesign();
   }
 
   reverseEdge(id: string): void {
     const edge = this.edge(id);
-    if (this.editingLocked || !edge) return;
+    if (this.editingLocked || !edge || edge.locked) return;
     [edge.from, edge.to] = [edge.to, edge.from];
     this.emitDesign();
   }

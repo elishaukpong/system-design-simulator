@@ -69,7 +69,8 @@ export class ScenarioRun {
         this.chaosLog.push({ t: event.at, message: event.message, applied: true });
         return;
       }
-      const targets = this.design.nodes.filter((n) => n.kind === event.target);
+      const only = event.action === 'flush' ? undefined : event.node;
+      const targets = this.design.nodes.filter((n) => n.kind === event.target && (!only || n.id === only));
       for (const target of targets) {
         if (event.action === 'kill') this.sim.kill(target.id, event.fraction ?? 1, event.seconds);
         if (event.action === 'flush') this.sim.flushCache(target.id);

@@ -40,6 +40,7 @@ export interface EdgeSpec {
   to: string;
   latencyMs?: number;
   sharePct?: number;
+  locked?: boolean;
 }
 
 export interface Design {
