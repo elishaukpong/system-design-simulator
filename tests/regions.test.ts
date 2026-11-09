@@ -322,3 +322,53 @@ describe('service calls', () => {
     expect(steps(sim, 3).global.errorRate).toBeGreaterThan(0.9);
   });
 });
+
+describe('shed requests', () => {
+  it('fail fast through an open breaker instead of waiting on the dead provider', () => {
+    const sim = new Simulation();
+    sim.setDesign(
+      design(
+        [
+          ['users', 'clients', US, { staticPct: 0, writePct: 30, retries: 0 }],
+          ['app', 'app', US, { instances: 8, externalCallPct: 50, searchPct: 0 }],
+          ['db', 'db', US],
+          ['cb', 'breaker', US],
+          ['ext', 'external', US, { latencyMs: 2000, failurePct: 100, rateLimitRps: 1000 }],
+        ],
+        [
+          ['users', 'app'],
+          ['app', 'db'],
+          ['app', 'cb'],
+          ['cb', 'ext'],
+        ],
+      ),
+    );
+    sim.setTraffic({ peakRps: 400, shape: 'steady' });
+    const snap = steps(sim, 30);
+    expect(snap.nodes.cb.breakerState).toBe('open');
+    expect(snap.global.p99).toBeLessThan(0.5);
+  });
+});
+
+describe('database connections', () => {
+  it('recover once traffic drops back under capacity', () => {
+    const sim = new Simulation();
+    sim.setDesign(
+      design(
+        [
+          ['users', 'clients', US, { staticPct: 0, writePct: 10, retries: 2 }],
+          ['app', 'app', US, { instances: 30, externalCallPct: 0, searchPct: 0 }],
+          ['db', 'db', US, { size: 'small', maxConnections: 60 }],
+        ],
+        [
+          ['users', 'app'],
+          ['app', 'db'],
+        ],
+      ),
+    );
+    sim.setTraffic({ peakRps: 100, shape: 'steady' });
+    sim.setScript((t) => (t < 20 ? 4000 : 300));
+    expect(steps(sim, 20).global.errorRate).toBeGreaterThan(0.2);
+    expect(steps(sim, 40).global.errorRate).toBeLessThan(0.01);
+  });
+});

@@ -85,6 +85,7 @@ interface Link {
 
 const RESTART_SECONDS = 20;
 const BOOT_SECONDS = 30;
+const WAVE_PERIOD_S = 120;
 const MANUAL_RESTART_SECONDS = 5;
 const MANUAL_ADD_SECONDS = 3;
 const CRASH_AFTER_SECONDS = 5;
@@ -109,7 +110,7 @@ export function trafficMultiplier(shape: TrafficShape, t: number): number {
     case 'spike':
       return t % 40 < 8 ? 1 : 0.2;
     case 'wave':
-      return 0.6 + 0.4 * Math.sin((2 * Math.PI * t) / 60 - Math.PI / 2);
+      return 0.6 + 0.4 * Math.sin((2 * Math.PI * t) / WAVE_PERIOD_S - Math.PI / 2);
   }
 }
 
@@ -265,7 +266,7 @@ export class Simulation {
     const edgeFlow = new Map<string, ClassFlow>();
     const plans = new Map<string, Record<TrafficClass, Plan>>();
     const metrics: Record<string, NodeMetrics> = {};
-    const own = new Map<string, { success: number; latency: number; p99: number }>();
+    const own = new Map<string, { success: number; latency: number; p99: number; pass?: number }>();
 
     const demand = this.script ? Math.max(0, this.script(t)) : this.traffic.peakRps * trafficMultiplier(this.traffic.shape, t);
     const clientNodes = nodes.filter((n) => n.kind === 'clients');
@@ -378,8 +379,9 @@ export class Simulation {
         }
         downstream[cls] = callSuccess * down;
         s[cls] = self.success * downstream[cls];
-        l[cls] = self.latency + lat;
-        p[cls] = self.p99 + callP99 + worstRouteP99;
+        const pass = self.pass ?? 1;
+        l[cls] = self.latency + pass * lat;
+        p[cls] = self.p99 + (pass >= 0.05 ? callP99 + worstRouteP99 : pass * (callP99 + worstRouteP99));
       }
       S.set(id, s);
       L.set(id, l);
@@ -630,8 +632,11 @@ export class Simulation {
       effectiveOps = Math.min(effectiveOps, concurrencyOps);
     }
 
+    const servers = Math.max(1, prof.serversPerUnit * (node.kind === 'shard' ? 1 : healthy));
+    const queueingAt = (busy: number) => (prof.baseLatency * Math.pow(busy, Math.sqrt(2 * (servers + 1)) - 1)) / (servers * (1 - busy));
+
     if (prof.connectionLimit !== null) {
-      const held = Math.max(prof.baseLatency, st.ownLatency);
+      const held = prof.baseLatency + queueingAt(Math.min(cpuUtil, 0.98));
       const connectionOps = (prof.connectionLimit / held) * avgWeight;
       connectionUtil = ((load / avgWeight) * held) / prof.connectionLimit;
       effectiveOps = Math.min(effectiveOps, connectionOps);
@@ -649,9 +654,7 @@ export class Simulation {
     const forwardFrac = load > 0 ? processed / (load * dt) : 0;
     const rho = effectiveOps > 0 ? load / effectiveOps : Infinity;
     const wait = effectiveOps > 0 ? backlog / effectiveOps : 0;
-    const servers = Math.max(1, prof.serversPerUnit * (node.kind === 'shard' ? 1 : healthy));
-    const busy = Math.min(rho, 0.98);
-    const queueing = (prof.baseLatency * Math.pow(busy, Math.sqrt(2 * (servers + 1)) - 1)) / (servers * (1 - busy));
+    const queueing = queueingAt(Math.min(rho, 0.98));
     const ownLatency = prof.baseLatency + queueing + wait;
     const ownP99 = prof.baseLatency * 1.3 + queueing * 4.6 + wait * 1.1;
     st.ownLatency = ownLatency;
@@ -679,7 +682,7 @@ export class Simulation {
     metrics.reason = this.reasonFor(node, metrics, cpuUtil, concurrencyUtil, connectionUtil, plans);
     if (node.kind === 'external' && inRps > numberParam(node.params, 'rateLimitRps', 200)) metrics.status = 'overloaded';
 
-    return { metrics, plans, forwarded, drain, own: { success: successFrac, latency: ownLatency, p99: ownP99 } };
+    return { metrics, plans, forwarded, drain, own: { success: successFrac, latency: ownLatency, p99: ownP99, pass: 1 - shedFrac } };
   }
 
   private processQueue(
