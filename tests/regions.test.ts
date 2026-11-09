@@ -168,3 +168,39 @@ describe('regions', () => {
     expect(snap.global.errorRate).toBeLessThan(0.001);
   });
 });
+
+describe('restart', () => {
+  const single = () =>
+    design(
+      [
+        ['users', 'clients', US, { staticPct: 0, retries: 0 }],
+        ['app', 'app', US, { instances: 4, searchPct: 0 }],
+      ],
+      [['users', 'app']],
+    );
+
+  it('brings a killed component back in seconds instead of waiting out the outage', () => {
+    const sim = new Simulation();
+    sim.setDesign(single());
+    sim.setTraffic({ peakRps: 100, shape: 'steady' });
+    steps(sim, 5);
+    sim.kill('app');
+    expect(steps(sim, 1).nodes.app.status).toBe('down');
+    expect(sim.canRestart('app')).toBe(true);
+    sim.restart('app');
+    expect(sim.canRestart('app')).toBe(false);
+    expect(steps(sim, 6).nodes.app.status).not.toBe('down');
+  });
+
+  it('cannot restart anything while its region is down', () => {
+    const sim = new Simulation();
+    sim.setDesign(single());
+    sim.setTraffic({ peakRps: 100, shape: 'steady' });
+    steps(sim, 5);
+    sim.killRegion('us-east', 60);
+    steps(sim, 1);
+    expect(sim.canRestart('app')).toBe(false);
+    sim.restart('app');
+    expect(steps(sim, 10).nodes.app.status).toBe('down');
+  });
+});

@@ -72,6 +72,8 @@ const toolbar = new Toolbar(document.getElementById('toolbar')!, store, {
 
 const inspector = new Inspector(document.getElementById('inspector')!, store, {
   kill: (id) => sim.kill(id),
+  restart: (id) => sim.restart(id),
+  canRestart: (id) => sim.canRestart(id),
   flush: (id) => sim.flushCache(id),
   killRegion: (region) => sim.killRegion(region, 60),
 });

@@ -85,6 +85,7 @@ interface Link {
 
 const RESTART_SECONDS = 20;
 const BOOT_SECONDS = 30;
+const MANUAL_RESTART_SECONDS = 5;
 const MANUAL_ADD_SECONDS = 3;
 const CRASH_AFTER_SECONDS = 5;
 const CRASH_UTILIZATION = 1.15;
@@ -121,6 +122,7 @@ export class Simulation {
   private last: SimSnapshot | null = null;
   private script: ((t: number) => number) | null = null;
   private overrides = new Map<string, { params: NodeSpec['params']; until: number }>();
+  private regionDownUntil = new Map<RegionId, number>();
   private totals = { deadLettered: 0, lost: 0, duplicates: 0 };
   private tickAsyncFailed = 0;
 
@@ -153,6 +155,7 @@ export class Simulation {
     this.states.clear();
     this.overrides.clear();
     this.totals = { deadLettered: 0, lost: 0, duplicates: 0 };
+    this.regionDownUntil.clear();
     this.last = null;
     for (const node of this.design.nodes) {
       this.syncInstances(node, this.stateFor(node));
@@ -165,9 +168,24 @@ export class Simulation {
 
   killRegion(region: RegionId, downSeconds: number): void {
     this.log('', 'error', `Region ${region} is down for ${downSeconds}s.`);
+    this.regionDownUntil.set(region, this.t + downSeconds);
     for (const node of this.design.nodes) {
       if (node.kind !== 'clients' && this.regionOf(node) === region) this.kill(node.id, 1, downSeconds);
     }
+  }
+
+  canRestart(nodeId: string): boolean {
+    const node = this.design.nodes.find((n) => n.id === nodeId);
+    if (!node || this.t < (this.regionDownUntil.get(this.regionOf(node)) ?? 0)) return false;
+    return this.stateFor(node).instances.some((i) => i.cause === 'restart' && i.readyAt > this.t + MANUAL_RESTART_SECONDS);
+  }
+
+  restart(nodeId: string): void {
+    if (!this.canRestart(nodeId)) return;
+    const node = this.design.nodes.find((n) => n.id === nodeId)!;
+    const down = this.stateFor(node).instances.filter((i) => i.cause === 'restart' && i.readyAt > this.t + MANUAL_RESTART_SECONDS);
+    for (const instance of down) instance.readyAt = this.t + MANUAL_RESTART_SECONDS;
+    this.log(nodeId, 'info', `${node.name}: restarting ${down.length} instance${down.length === 1 ? '' : 's'}. Back in ${MANUAL_RESTART_SECONDS}s.`);
   }
 
   kill(nodeId: string, fraction = 1, downSeconds = BOOT_SECONDS): void {

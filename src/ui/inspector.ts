@@ -9,12 +9,15 @@ import { h, hex } from './dom';
 
 export interface InspectorActions {
   kill(id: string): void;
+  restart(id: string): void;
+  canRestart(id: string): boolean;
   flush(id: string): void;
   killRegion(region: RegionId): void;
 }
 
 export class Inspector {
   private live: HTMLElement | null = null;
+  private restartButton: HTMLButtonElement | null = null;
   private renderedFor: string | null = null;
 
   constructor(private root: HTMLElement, private store: Store, private actions: InspectorActions) {
@@ -101,7 +104,8 @@ export class Inspector {
     for (const param of def.params) params.append(this.field(node, param));
 
     this.live = h('div');
-    const chaos = h('div', { class: 'actions' }, h('button', { class: 'danger', title: 'Kill every instance for 30s', on: { click: () => this.actions.kill(node.id) } }, '💥 Kill'));
+    this.restartButton = h('button', { class: 'primary', title: 'Bring it back in 5s instead of waiting', hidden: true, on: { click: () => this.actions.restart(node.id) } }, '🔄 Restart');
+    const chaos = h('div', { class: 'actions' }, this.restartButton, h('button', { class: 'danger', title: 'Kill every instance for 30s', on: { click: () => this.actions.kill(node.id) } }, '💥 Kill'));
     if (node.kind === 'cache') chaos.append(h('button', { title: 'Empty the cache', on: { click: () => this.actions.flush(node.id) } }, '🧹 Flush'));
     if (node.kind !== 'clients') {
       const region = regionAt(node.z);
@@ -152,6 +156,7 @@ export class Inspector {
 
     const node = this.store.node(sel.id);
     const m = snap?.nodes[sel.id];
+    if (this.restartButton) this.restartButton.hidden = this.store.editingLocked || !this.actions.canRestart(sel.id);
     if (!node || !m) {
       this.live.replaceChildren(h('p', { class: 'muted small' }, 'Press Run to see live numbers.'));
       return;
