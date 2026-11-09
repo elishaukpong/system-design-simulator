@@ -288,3 +288,37 @@ describe('gateway path routing', () => {
     expect(snap.global.errorRate).toBeCloseTo(0.3, 1);
   });
 });
+
+describe('service calls', () => {
+  const chain = (callPct?: number) => {
+    const d = design(
+      [
+        ['users', 'clients', US, { staticPct: 0, retries: 0 }],
+        ['checkout', 'app', US, { instances: 6, searchPct: 0, externalCallPct: 0 }],
+        ['accounts', 'app', US, { instances: 6, searchPct: 0, externalCallPct: 0 }],
+      ],
+      [
+        ['users', 'checkout'],
+        ['checkout', 'accounts'],
+      ],
+    );
+    if (callPct !== undefined) d.edges[1].sharePct = callPct;
+    return d;
+  };
+
+  it('sends the called share of requests to the dependency', () => {
+    const sim = new Simulation();
+    sim.setDesign(chain(40));
+    sim.setTraffic({ peakRps: 500, shape: 'steady' });
+    expect(steps(sim, 10).nodes.accounts.inRps).toBeCloseTo(200, -1);
+  });
+
+  it('fails the caller when the dependency is down', () => {
+    const sim = new Simulation();
+    sim.setDesign(chain());
+    sim.setTraffic({ peakRps: 500, shape: 'steady' });
+    steps(sim, 10);
+    sim.kill('accounts');
+    expect(steps(sim, 3).global.errorRate).toBeGreaterThan(0.9);
+  });
+});

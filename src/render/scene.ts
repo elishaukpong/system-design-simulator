@@ -263,6 +263,7 @@ export class SceneView {
       if (!from || !to) continue;
       const view = this.createEdgeView(spec, from.spec, to.spec, this.edgeList.length);
       if (from.spec.kind === 'gateway') view.shareLabel = this.shareLabel(view, design);
+      if ((from.spec.kind === 'app' || from.spec.kind === 'workers') && ['app', 'lb', 'breaker'].includes(to.spec.kind)) view.shareLabel = this.callLabel(view);
       this.edges.set(spec.id, view);
       this.edgeList.push(view);
     }
@@ -724,9 +725,17 @@ export class SceneView {
     const siblings = design.edges.filter((e) => e.from === view.spec.from);
     if (siblings.length < 2) return null;
     const total = siblings.reduce((sum, e) => sum + (e.sharePct ?? 100), 0);
+    return this.pill(view, `${total > 0 ? Math.round(((view.spec.sharePct ?? 100) / total) * 100) : 0}%`);
+  }
+
+  private callLabel(view: EdgeView): CSS2DObject {
+    return this.pill(view, `calls ${view.spec.sharePct ?? 100}%`);
+  }
+
+  private pill(view: EdgeView, text: string): CSS2DObject {
     const el = document.createElement('div');
     el.className = 'share-label';
-    el.textContent = `${total > 0 ? Math.round(((view.spec.sharePct ?? 100) / total) * 100) : 0}%`;
+    el.textContent = text;
     const label = new CSS2DObject(el);
     label.position.copy(view.curve.getPointAt(view.rttLabel ? 0.3 : 0.62));
     this.scene.add(label);

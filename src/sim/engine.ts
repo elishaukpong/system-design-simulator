@@ -895,7 +895,8 @@ export class Simulation {
       } else {
         readRoutes.push({ child: null, edgeId: null, frac: plainReads, amp: 1 });
       }
-      plans.read = { routes: readRoutes, calls: readCalls, unrouted: 0, async: false };
+      const serviceCalls = this.serviceCalls(children);
+      plans.read = { routes: readRoutes, calls: [...readCalls, ...serviceCalls], unrouted: 0, async: false };
 
       const queues = children.filter((c) => c.kind === 'queue');
       const writeStores = pickGroup(children, WRITE_STORES, false);
@@ -909,7 +910,7 @@ export class Simulation {
       const writeCalls: SideCall[] = externalFrac > 0
         ? externals.map((e) => ({ child: e.child, edgeId: e.edgeId, frac: externalFrac / externals.length, fatal: true }))
         : [];
-      plans.write = { routes: writeRoutes, calls: writeCalls, unrouted: 0, async: false };
+      plans.write = { routes: writeRoutes, calls: [...writeCalls, ...serviceCalls], unrouted: 0, async: false };
       return;
     }
 
@@ -926,6 +927,18 @@ export class Simulation {
     }
 
     for (const cls of TRAFFIC_CLASSES) plans[cls] = terminalPlan();
+  }
+
+  private serviceCalls(children: Link[]): SideCall[] {
+    return children
+      .filter((c) => c.kind === 'app')
+      .map((c) => ({
+        child: c.child,
+        edgeId: c.edgeId,
+        frac: Math.max(0, Math.min(100, this.design.edges.find((e) => e.id === c.edgeId)?.sharePct ?? 100)) / 100,
+        fatal: true,
+      }))
+      .filter((call) => call.frac > 0);
   }
 
   private originMix(dnsId: string, byId: Map<string, NodeSpec>, edgeFlow: Map<string, ClassFlow>): Map<RegionId, number> {
@@ -1162,8 +1175,8 @@ export class Simulation {
   }
 
   private healthChecked(parents: NodeSpec[]): boolean {
-    const lbs = parents.filter((p) => p.kind === 'lb');
-    return lbs.length > 0 && lbs.length === parents.length && lbs.every((lb) => boolParam(lb.params, 'healthChecks', true));
+    const checks = (p: NodeSpec) => p.kind === 'gateway' || (p.kind === 'lb' && boolParam(p.params, 'healthChecks', true));
+    return parents.length > 0 && parents.every(checks);
   }
 
   private primaryFor(replica: NodeSpec, byId: Map<string, NodeSpec>): NodeSpec | null {

@@ -244,13 +244,13 @@ const TEMPLATES: Template[] = [
   {
     id: 'microservices',
     label: 'Microservices behind a gateway',
-    blurb: 'The gateway splits by path: search takes most of the traffic, checkout the least. Scale each service on its own, and kill one to see only its path fail.',
+    blurb: 'The gateway splits by path: search takes most of the traffic, checkout the least. Every checkout also calls users-svc. Kill search and only search fails. Kill users and checkout goes down with it.',
     traffic: { peakRps: 1500, shape: 'steady' },
     nodes: [
       ['clients', 'clients', -16, 0, { staticPct: 0, writePct: 10 }],
       ['gw', 'gateway', -8, 0, { rateLimitRps: 20000 }],
       ['search', 'app', 0, -8, { instances: 12, searchPct: 0, externalCallPct: 0 }, 'search-svc'],
-      ['users', 'app', 0, 0, { instances: 4, searchPct: 0, externalCallPct: 0 }, 'users-svc'],
+      ['users', 'app', 0, 0, { instances: 6, searchPct: 0, externalCallPct: 0 }, 'users-svc'],
       ['checkout', 'app', 0, 8, { instances: 2, searchPct: 0, externalCallPct: 0 }, 'checkout-svc'],
       ['search-cache', 'cache', 8, -8],
       ['search-db', 'replica', 16, -8, {}, 'Catalog Replicas'],
@@ -269,6 +269,7 @@ const TEMPLATES: Template[] = [
       ['catalog-db', 'search-db'],
       ['users', 'users-db'],
       ['checkout', 'orders-db'],
+      ['checkout', 'users', 100],
     ],
   },
 ];

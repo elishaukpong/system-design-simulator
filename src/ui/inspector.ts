@@ -62,7 +62,7 @@ export class Inspector {
         max: '500',
         step: '5',
         value: String(extra),
-        disabled: this.store.editingLocked,
+        disabled: this.store.editingLocked || !!edge.locked,
         on: {
           input: () => {
             extraValue.textContent = `${extraSlider.value} ms`;
@@ -70,7 +70,11 @@ export class Inspector {
           change: () => this.store.setEdgeLatency(edge.id, Number(extraSlider.value)),
         },
       });
-      const shareField = from.kind === 'gateway' ? this.shareField(edge.id, from.id) : null;
+      const shareField = from.kind === 'gateway'
+        ? this.shareField(edge.id, from.id, !!edge.locked)
+        : (from.kind === 'app' || from.kind === 'workers') && ['app', 'lb', 'breaker'].includes(to.kind)
+          ? this.callField(edge.id, !!edge.locked)
+          : null;
       this.root.append(
         h('h2', { class: 'panel-title' }, 'Connection'),
         h('div', { class: 'insp-head' }, h('strong', {}, `${from.name} → ${to.name}`)),
@@ -86,8 +90,12 @@ export class Inspector {
         h(
           'div',
           { class: 'actions' },
-          h('button', { on: { click: () => this.store.reverseEdge(edge.id) } }, '⇄ Reverse'),
-          h('button', { class: 'danger', on: { click: () => this.store.removeEdge(edge.id) } }, 'Delete'),
+          ...(edge.locked
+            ? [h('span', { class: 'muted small' }, '🔒 Part of the scenario. You cannot change it.')]
+            : [
+                h('button', { on: { click: () => this.store.reverseEdge(edge.id) } }, '⇄ Reverse'),
+                h('button', { class: 'danger', on: { click: () => this.store.removeEdge(edge.id) } }, 'Delete'),
+              ]),
         ),
       );
       return;
@@ -126,7 +134,7 @@ export class Inspector {
     );
   }
 
-  private shareField(edgeId: string, gatewayId: string): HTMLElement {
+  private shareField(edgeId: string, gatewayId: string, locked: boolean): HTMLElement {
     const siblings = this.store.design.edges.filter((e) => e.from === gatewayId);
     const weightOf = (id: string, own: number) => siblings.reduce((sum, e) => sum + (e.id === id ? own : e.sharePct ?? 100), 0);
     const current = this.store.edge(edgeId)?.sharePct ?? 100;
@@ -141,7 +149,7 @@ export class Inspector {
       max: '100',
       step: '5',
       value: String(current),
-      disabled: this.store.editingLocked,
+      disabled: this.store.editingLocked || locked,
       on: {
         input: () => {
           value.textContent = `${effective(Number(slider.value))}%`;
@@ -155,6 +163,32 @@ export class Inspector {
       h('div', { class: 'field-row' }, h('span', { class: 'field-label' }, 'Path share'), value),
       slider,
       h('div', { class: 'field-help' }, 'How much of the gateway\'s traffic goes down this path, like /search or /checkout. Shares are relative to the other paths.'),
+    );
+  }
+
+  private callField(edgeId: string, locked: boolean): HTMLElement {
+    const current = this.store.edge(edgeId)?.sharePct ?? 100;
+    const value = h('span', { class: 'field-value' }, `${current}%`);
+    const slider = h('input', {
+      type: 'range',
+      min: '0',
+      max: '100',
+      step: '5',
+      value: String(current),
+      disabled: this.store.editingLocked || locked,
+      on: {
+        input: () => {
+          value.textContent = `${slider.value}%`;
+        },
+        change: () => this.store.setEdgeShare(edgeId, Number(slider.value)),
+      },
+    });
+    return h(
+      'div',
+      { class: 'field' },
+      h('div', { class: 'field-row' }, h('span', { class: 'field-label' }, 'Calls on'), value),
+      slider,
+      h('div', { class: 'field-help' }, 'Share of requests that call this service and wait for its answer. If it fails or is slow, so is the caller.'),
     );
   }
 
