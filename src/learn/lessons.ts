@@ -373,9 +373,9 @@ export const LESSONS: Lesson[] = [
       },
       {
         title: 'The app breathes',
-        body: `<p>Look at the app servers now. Same users, less than half the work.</p><p>The CDN also answers faster, because its edge is closer to the user than your region is.</p>`,
+        body: `<p>Look at the app servers now. Same users, and they went from about 90% busy to about half.</p><p>The CDN also answers faster, because its edge is closer to the user than your region is.</p>`,
         focus: { node: 'app' },
-        task: { label: 'App servers under 50% busy', test: (ctx) => metricsOf(ctx, 'app').some((m) => m.utilization > 0 && m.utilization < 0.5) },
+        task: { label: 'App servers under 60% busy', test: (ctx) => metricsOf(ctx, 'app').some((m) => m.utilization > 0 && m.utilization < 0.6) },
       },
     ],
     exercises: [
