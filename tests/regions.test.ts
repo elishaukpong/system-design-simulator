@@ -204,3 +204,47 @@ describe('restart', () => {
     expect(steps(sim, 10).nodes.app.status).toBe('down');
   });
 });
+
+describe('dns routes by where the users are', () => {
+  const geo = () =>
+    design(
+      [
+        ['users-us', 'clients', US, { staticPct: 0, retries: 0, sharePct: 50 }],
+        ['users-eu', 'clients', EU, { staticPct: 0, retries: 0, sharePct: 50 }],
+        ['dns', 'dns', US],
+        ['lb-us', 'lb', US],
+        ['lb-eu', 'lb', EU],
+        ['app-us', 'app', US, { instances: 6, searchPct: 0, externalCallPct: 0 }],
+        ['app-eu', 'app', EU, { instances: 6, searchPct: 0, externalCallPct: 0 }],
+      ],
+      [
+        ['users-us', 'dns'],
+        ['users-eu', 'dns'],
+        ['dns', 'lb-us'],
+        ['dns', 'lb-eu'],
+        ['lb-us', 'app-us'],
+        ['lb-eu', 'app-eu'],
+      ],
+    );
+
+  it('sends each region its own users even when the DNS sits in one region', () => {
+    const sim = new Simulation();
+    sim.setDesign(geo());
+    sim.setTraffic({ peakRps: 400, shape: 'steady' });
+    const snap = steps(sim, 10);
+    expect(snap.nodes['lb-us'].inRps).toBeCloseTo(200, -1);
+    expect(snap.nodes['lb-eu'].inRps).toBeCloseTo(200, -1);
+    expect(Math.abs(snap.nodes['users-eu'].pathLatency - snap.nodes['users-us'].pathLatency)).toBeLessThan(0.01);
+  });
+
+  it('fails a region over to the next nearest one', () => {
+    const sim = new Simulation();
+    sim.setDesign(geo());
+    sim.setTraffic({ peakRps: 400, shape: 'steady' });
+    steps(sim, 10);
+    sim.killRegion('eu-west', 60);
+    const snap = steps(sim, 5);
+    expect(snap.nodes['lb-us'].inRps).toBeCloseTo(400, -1);
+    expect(snap.nodes['users-eu'].pathLatency - snap.nodes['users-us'].pathLatency).toBeGreaterThan(0.07);
+  });
+});

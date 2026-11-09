@@ -703,7 +703,7 @@ export class SceneView {
     let rttLabel: CSS2DObject | null = null;
     const fromRegion = regionAt(from.z);
     const toRegion = regionAt(to.z);
-    if (from.kind !== 'clients' && fromRegion !== toRegion) {
+    if (from.kind !== 'clients' && from.kind !== 'dns' && to.kind !== 'dns' && fromRegion !== toRegion) {
       const el = document.createElement('div');
       el.className = 'rtt-label';
       el.textContent = `${Math.round(regionRtt(fromRegion, toRegion) * 1000 + (spec.latencyMs ?? 0))}ms`;

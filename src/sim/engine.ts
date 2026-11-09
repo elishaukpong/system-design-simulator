@@ -123,6 +123,8 @@ export class Simulation {
   private script: ((t: number) => number) | null = null;
   private overrides = new Map<string, { params: NodeSpec['params']; until: number }>();
   private regionDownUntil = new Map<RegionId, number>();
+  private dnsOrigins = new Map<string, Map<RegionId, number>>();
+  private dnsRoutes = new Map<string, Map<RegionId, Record<TrafficClass, Route[]>>>();
   private totals = { deadLettered: 0, lost: 0, duplicates: 0 };
   private tickAsyncFailed = 0;
 
@@ -300,8 +302,11 @@ export class Simulation {
       edgeFlow.set(route.edgeId, edge);
     };
 
+    this.dnsOrigins.clear();
+    this.dnsRoutes.clear();
     for (const id of order) {
       const node = byId.get(id)!;
+      if (node.kind === 'dns') this.dnsOrigins.set(id, this.originMix(id, byId, edgeFlow));
       const result = this.process(node, inflow.get(id) ?? zeroFlow(), links.get(id) ?? [], parents.get(id) ?? [], byId, links, dt);
       metrics[id] = result.metrics;
       own.set(id, result.own);
@@ -326,6 +331,12 @@ export class Simulation {
       if (from && to) rtt.set(edge.id, this.edgeRtt(from, to, edge.latencyMs ?? 0));
     }
     const hop = (edgeId: string | null) => (edgeId ? rtt.get(edgeId) ?? 0 : 0);
+    const extraLatency = new Map(this.design.edges.map((e) => [e.id, (e.latencyMs ?? 0) / 1000]));
+    const resolved = new Map<string, Map<RegionId, { s: ClassFlow; l: ClassFlow; p: ClassFlow }>>();
+    const child = (parentId: string, childId: string) => {
+      const view = resolved.get(childId)?.get(this.regionOf(byId.get(parentId)!));
+      return view ?? { s: S.get(childId), l: L.get(childId), p: P.get(childId) };
+    };
 
     const S = new Map<string, ClassFlow>();
     const L = new Map<string, ClassFlow>();
@@ -348,10 +359,11 @@ export class Simulation {
             down += route.frac;
             continue;
           }
-          down += route.frac * (S.get(route.child)?.[cls] ?? 0);
-          const childLatency = (L.get(route.child)?.[cls] ?? 0) + hop(route.edgeId);
+          const target = child(id, route.child);
+          down += route.frac * (target.s?.[cls] ?? 0);
+          const childLatency = (target.l?.[cls] ?? 0) + hop(route.edgeId);
           lat += route.frac * childLatency;
-          const childP99 = (P.get(route.child)?.[cls] ?? 0) + hop(route.edgeId);
+          const childP99 = (target.p?.[cls] ?? 0) + hop(route.edgeId);
           worstRouteP99 = Math.max(worstRouteP99, route.frac >= 0.05 ? childP99 : route.frac * childLatency);
         }
         if (plan.async) down = 1;
@@ -372,6 +384,31 @@ export class Simulation {
       S.set(id, s);
       L.set(id, l);
       P.set(id, p);
+
+      const regionalRoutes = this.dnsRoutes.get(id);
+      if (regionalRoutes) {
+        const views = new Map<RegionId, { s: ClassFlow; l: ClassFlow; p: ClassFlow }>();
+        for (const [region, routesByClass] of regionalRoutes) {
+          const view = { s: zeroFlow(), l: zeroFlow(), p: zeroFlow() };
+          for (const cls of TRAFFIC_CLASSES) {
+            let down = 0;
+            let lat = 0;
+            let worst = 0;
+            for (const route of routesByClass[cls]) {
+              if (route.child === null || route.edgeId === null) continue;
+              const network = regionRtt(region, this.regionOf(byId.get(route.child)!)) + (extraLatency.get(route.edgeId) ?? 0);
+              down += route.frac * (S.get(route.child)?.[cls] ?? 0);
+              lat += route.frac * ((L.get(route.child)?.[cls] ?? 0) + network);
+              worst = Math.max(worst, (P.get(route.child)?.[cls] ?? 0) + network);
+            }
+            view.s[cls] = self.success * down;
+            view.l[cls] = self.latency + lat;
+            view.p[cls] = self.p99 + worst;
+          }
+          views.set(region, view);
+        }
+        resolved.set(id, views);
+      }
 
       const m = metrics[id];
       const inTotal = m.inRps;
@@ -402,7 +439,7 @@ export class Simulation {
         flow,
         failFrac: childSuccess && totalFlow(flow) > 0 ? 1 - weighted(childSuccess, flow) : 0,
         rtt: rtt.get(edge.id) ?? 0,
-        crossRegion: !!from && !!to && from.kind !== 'clients' && this.regionOf(from) !== this.regionOf(to),
+        crossRegion: !!from && !!to && from.kind !== 'clients' && from.kind !== 'dns' && to.kind !== 'dns' && this.regionOf(from) !== this.regionOf(to),
       };
     }
 
@@ -801,10 +838,14 @@ export class Simulation {
         if (kind === 'cdn' && cls === 'static') edgeServed = numberParam(node.params, 'hitRatio', 0.9);
         if (kind === 'cdn' && cls === 'read') edgeServed = numberParam(node.params, 'cacheDynamicPct', 0) / 100;
         const targets = pickGroup(children, cls === 'static' ? PASS_STATIC : PASS_DYNAMIC, true);
+        if (kind === 'dns') {
+          plans[cls] = this.resolveByOrigin(node, cls, targets, byId, links, toRoutes);
+          continue;
+        }
         const usable = kind === 'lb' && boolParam(node.params, 'healthChecks', true)
           ? targets.filter((target) => this.isUp(byId.get(target.child)!))
-          : kind === 'clients' || kind === 'dns'
-            ? this.nearestHealthy(node, targets, byId, links)
+          : kind === 'clients'
+            ? this.nearestHealthy(this.regionOf(node), targets, byId, links)
             : targets;
         const remaining = 1 - edgeServed;
         const routes: Route[] = [];
@@ -887,11 +928,53 @@ export class Simulation {
     for (const cls of TRAFFIC_CLASSES) plans[cls] = terminalPlan();
   }
 
-  private nearestHealthy(node: NodeSpec, targets: Link[], byId: Map<string, NodeSpec>, links: Map<string, Link[]>): Link[] {
+  private originMix(dnsId: string, byId: Map<string, NodeSpec>, edgeFlow: Map<string, ClassFlow>): Map<RegionId, number> {
+    const mix = new Map<RegionId, number>();
+    for (const edge of this.design.edges) {
+      if (edge.to !== dnsId) continue;
+      const parent = byId.get(edge.from);
+      const flow = totalFlow(edgeFlow.get(edge.id) ?? zeroFlow());
+      if (!parent || flow <= 0) continue;
+      const region = this.regionOf(parent);
+      mix.set(region, (mix.get(region) ?? 0) + flow);
+    }
+    return mix;
+  }
+
+  private resolveByOrigin(
+    node: NodeSpec,
+    cls: TrafficClass,
+    targets: Link[],
+    byId: Map<string, NodeSpec>,
+    links: Map<string, Link[]>,
+    toRoutes: (targets: Link[], frac: number) => Route[],
+  ): Plan {
+    const origins = this.dnsOrigins.get(node.id);
+    const mix: Array<[RegionId, number]> = origins?.size ? [...origins] : [[this.regionOf(node), 1]];
+    const total = mix.reduce((sum, [, weight]) => sum + weight, 0);
+    const byRegion = this.dnsRoutes.get(node.id) ?? new Map<RegionId, Record<TrafficClass, Route[]>>();
+    this.dnsRoutes.set(node.id, byRegion);
+    const merged = new Map<string, Route>();
+    for (const [region, weight] of mix) {
+      const routes = toRoutes(this.nearestHealthy(region, targets, byId, links), 1);
+      const perClass = byRegion.get(region) ?? { static: [], read: [], write: [] };
+      perClass[cls] = routes;
+      byRegion.set(region, perClass);
+      for (const route of routes) {
+        const key = route.edgeId ?? '';
+        const share = (route.frac * weight) / total;
+        const existing = merged.get(key);
+        if (existing) existing.frac += share;
+        else merged.set(key, { ...route, frac: share });
+      }
+    }
+    return { routes: [...merged.values()], calls: [], unrouted: targets.length === 0 ? 1 : 0, async: false };
+  }
+
+  private nearestHealthy(from: RegionId, targets: Link[], byId: Map<string, NodeSpec>, links: Map<string, Link[]>): Link[] {
     if (targets.length <= 1) return targets;
     const healthy = targets.filter((t) => this.routeHealthy(t.child, byId, links));
     const pool = healthy.length ? healthy : targets;
-    const from = this.regionOf(node);
     const distance = (t: Link) => regionRtt(from, this.regionOf(byId.get(t.child)!));
     const nearest = Math.min(...pool.map(distance));
     return pool.filter((t) => distance(t) <= nearest + 0.005);
@@ -1030,6 +1113,8 @@ export class Simulation {
   private edgeRtt(from: NodeSpec, to: NodeSpec, extraMs: number): number {
     const extra = extraMs / 1000;
     if (from.kind === 'clients' && to.kind === 'cdn') return EDGE_POP_RTT + extra;
+    if (to.kind === 'dns') return (from.kind === 'clients' ? LAST_MILE_RTT : 0) + extra;
+    if (from.kind === 'dns') return extra;
     const network = regionRtt(this.regionOf(from), this.regionOf(to));
     return (from.kind === 'clients' ? LAST_MILE_RTT + network : network) + extra;
   }
