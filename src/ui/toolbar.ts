@@ -16,6 +16,7 @@ export interface ToolbarActions {
   importDesign(): void;
   clear(): void;
   openScenarios(): void;
+  openLearn(): void;
   help(): void;
 }
 
@@ -120,6 +121,7 @@ export class Toolbar {
       h('div', { class: 'brand', title: 'System Design Simulator' }, h('span', { class: 'brand-mark' }), 'SysSim'),
       h('button', { class: 'help-button', title: 'Show the guided tour', on: { click: () => actions.help() } }, '?'),
       h('div', { class: 'tool-sep' }),
+      h('button', { class: 'learn-button', title: 'Guided lessons on a live system', on: { click: () => actions.openLearn() } }, '📘 Learn'),
       h('button', { class: 'scenarios-button', title: 'Graded design challenges', on: { click: () => actions.openScenarios() } }, '🎯 Scenarios'),
       templateSelect,
       h('div', { class: 'traffic' }, h('label', {}, 'Traffic'), this.slider, this.trafficValue, this.shapeSelect),

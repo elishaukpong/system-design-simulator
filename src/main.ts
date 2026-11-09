@@ -1,4 +1,8 @@
 import { Interaction } from './interaction';
+import { CheckTracker } from './learn/checks';
+import { exerciseById, lessonById } from './learn/lessons';
+import { loadLearnProgress, markLearned } from './learn/progress';
+import type { Focus, Lesson } from './learn/types';
 import { formatRps, SceneView } from './render/scene';
 import { diagnose } from './sim/analysis';
 import { Simulation } from './sim/engine';
@@ -14,6 +18,7 @@ import { openDebrief } from './ui/debrief';
 import { Inspector } from './ui/inspector';
 import { Palette } from './ui/palette';
 import { Replay } from './ui/replay';
+import { LearnPanel, openLessonPicker, type LearnView } from './ui/learn';
 import { BriefPanel, openScenarioPicker } from './ui/scenarios';
 import { Toolbar } from './ui/toolbar';
 import { startMainTour, startMainTourOnce, startScenarioTourOnce } from './ui/tour';
@@ -35,6 +40,10 @@ let run: ScenarioRun | null = null;
 let lastResult: RunResult | null = null;
 let replay: Replay | null = null;
 const MODE_KEY = 'sds:mode';
+const LESSON_KEY = 'sds:learn:lesson';
+let learnView: LearnView | null = null;
+let tracker: CheckTracker | null = null;
+let spotlit: Element | null = null;
 
 const palette = new Palette(document.getElementById('palette')!, (kind, event) => {
   interaction.startPlacing(kind, event.pointerType !== 'touch');
@@ -62,6 +71,10 @@ const toolbar = new Toolbar(document.getElementById('toolbar')!, store, {
   openScenarios: () => {
     if (run) return;
     openScenarioPicker(loadProgress(), enterScenario);
+  },
+  openLearn: () => {
+    if (run) return;
+    openLearnPicker();
   },
   clear: () => {
     if (run || !window.confirm('Remove every component from the canvas?')) return;
@@ -96,6 +109,31 @@ const brief = new BriefPanel(document.getElementById('brief')!, {
     if (scenario && lastResult) openDebrief(scenario, lastResult, debriefActions);
   },
 });
+const learn = new LearnPanel(document.getElementById('learn')!, {
+  next: () => {
+    if (learnView?.kind !== 'lesson') return;
+    const { lesson, step } = learnView;
+    if (step + 1 < lesson.steps.length) showStep(lesson, step + 1);
+    else completeLesson(lesson);
+  },
+  back: () => {
+    if (learnView?.kind === 'lesson' && learnView.step > 0) showStep(learnView.lesson, learnView.step - 1, true);
+  },
+  restartStep: () => {
+    if (learnView?.kind === 'lesson') showStep(learnView.lesson, learnView.step, true);
+    if (learnView?.kind === 'exercise' && window.confirm('Throw this design away and start the exercise over?')) {
+      store.load(learnView.exercise.start());
+      startExerciseRun(learnView.exercise.checks, learnView.exercise.speed);
+    }
+  },
+  startExercise: (id) => enterExercise(id),
+  backToLesson: () => {
+    if (learnView) enterLesson(learnView.lesson.id);
+  },
+  pickLesson: () => openLearnPicker(),
+  exit: () => exitLearn(),
+});
+
 const debriefActions = {
   retry: () => startTest(),
   pickScenario: () => openScenarioPicker(loadProgress(), enterScenario),
@@ -114,8 +152,16 @@ interaction.onChange(() => {
 });
 
 const savedMode = readMode();
+const [modeKind, modeId, modeStep] = (savedMode ?? '').split(':');
 if (savedMode && scenarioById(savedMode)) {
   enterScenario(savedMode);
+} else if (modeKind === 'learn' && lessonById(modeId)) {
+  const lesson = lessonById(modeId)!;
+  const step = Number(modeStep) || 0;
+  enterLesson(lesson.id, Math.min(step, lesson.steps.length - 1));
+  if (step >= lesson.steps.length) completeLesson(lesson);
+} else if (modeKind === 'exercise' && exerciseById(modeId)) {
+  enterExercise(modeId);
 } else {
   if (!store.restore()) store.load(buildTemplate('monolith'));
   sim.setDesign(store.design);
@@ -135,9 +181,125 @@ function scenarioStart(s: Scenario): SavedState {
   return { version: 1, design: s.start(), traffic: { peakRps: Math.round(peakRps(s)), shape: 'steady' } };
 }
 
+function openLearnPicker(): void {
+  openLessonPicker(loadLearnProgress(), (id) => enterLesson(id), enterExercise);
+}
+
+function leaveScenario(): void {
+  if (!scenario) return;
+  if (replay) exitReplay();
+  if (run) abortTest();
+  scenario = null;
+  lastResult = null;
+  renderBrief();
+}
+
+function leaveLearning(): void {
+  learnView = null;
+  tracker = null;
+  applyFocus(undefined);
+  renderLearn();
+}
+
+function enterLesson(id: string, step = 0): void {
+  const lesson = lessonById(id);
+  if (!lesson) return;
+  leaveScenario();
+  store.setParamLocks({});
+  store.useStorage(LESSON_KEY);
+  showStep(lesson, step, true);
+}
+
+function showStep(lesson: Lesson, index: number, fresh = false): void {
+  const step = lesson.steps[index];
+  const setupStep = step.setup ? step : fresh ? lesson.steps.slice(0, index).reverse().find((s) => s.setup) : undefined;
+  if (setupStep?.setup) {
+    store.load(setupStep.setup());
+    running = setupStep.run ?? false;
+    speed = setupStep.speed ?? 1;
+    resetSim();
+    scene.fit(store.design);
+  }
+  if (step.speed) speed = step.speed;
+  tracker = step.task ? new CheckTracker([step.task]) : null;
+  learnView = { kind: 'lesson', lesson, step: index };
+  writeMode(`learn:${lesson.id}:${index}`);
+  applyFocus(step.focus);
+  renderLearn();
+  syncChrome();
+}
+
+function completeLesson(lesson: Lesson): void {
+  markLearned('lessons', lesson.id);
+  tracker = null;
+  learnView = { kind: 'complete', lesson };
+  writeMode(`learn:${lesson.id}:${lesson.steps.length}`);
+  applyFocus(undefined);
+  renderLearn();
+}
+
+function enterExercise(id: string): void {
+  const found = exerciseById(id);
+  if (!found) return;
+  leaveScenario();
+  store.setParamLocks({});
+  store.useStorage(`sds:exercise:${id}`);
+  if (!store.restore()) store.load(found.exercise.start());
+  learnView = { kind: 'exercise', lesson: found.lesson, exercise: found.exercise, done: !!loadLearnProgress().exercises[id] };
+  writeMode(`exercise:${id}`);
+  applyFocus(undefined);
+  startExerciseRun(found.exercise.checks, found.exercise.speed);
+  renderLearn();
+}
+
+function startExerciseRun(checks: Lesson['exercises'][number]['checks'], exerciseSpeed?: number): void {
+  running = false;
+  speed = exerciseSpeed ?? 1;
+  tracker = new CheckTracker(checks, true);
+  resetSim();
+  scene.fit(store.design);
+}
+
+function exitLearn(): void {
+  leaveLearning();
+  store.useStorage(SANDBOX_KEY);
+  if (!store.restore()) store.load(buildTemplate('monolith'));
+  writeMode(null);
+  running = false;
+  resetSim();
+  scene.fit(store.design);
+}
+
+function applyFocus(focus: Focus | undefined): void {
+  spotlit?.classList.remove('learn-spot');
+  spotlit = null;
+  if (focus?.element) {
+    spotlit = document.querySelector(focus.element);
+    spotlit?.classList.add('learn-spot');
+  }
+  if (focus?.node && store.node(focus.node)) store.select({ type: 'node', id: focus.node });
+}
+
+function renderLearn(): void {
+  learn.render(learnView, loadLearnProgress());
+}
+
+function updateLearning(): void {
+  if (!tracker || !learnView) return;
+  const statuses = tracker.update({ snap: sim.snapshot, design: store.design, traffic: store.traffic, events: sim.events }, sim.t);
+  learn.refresh(statuses);
+  if (learnView.kind === 'exercise' && !learnView.done && tracker.done) {
+    markLearned('exercises', learnView.exercise.id);
+    learnView = { ...learnView, done: true };
+    renderLearn();
+    learn.refresh(statuses);
+  }
+}
+
 function enterScenario(id: string): void {
   const next = scenarioById(id);
   if (!next) return;
+  leaveLearning();
   if (replay) exitReplay();
   if (run) abortTest();
   scenario = next;
@@ -529,6 +691,7 @@ function tick(now: number): void {
     inspector.refresh(snap);
     events.render(sim.events);
     brief.refresh(run);
+    updateLearning();
     toolbar.update(running, speed, interaction.connectMode, sim.t);
   }
 

@@ -101,6 +101,14 @@ const MAIN_STEPS: Step[] = [
     text: `<p>Crashes, autoscaling, breakers opening, failovers and dead-lettered jobs, in order.</p>`,
   },
   {
+    id: 'learn',
+    title: 'Learn by doing',
+    element: '.learn-button',
+    on: 'bottom',
+    text: `<p>Thirteen short lessons, from the four dials to services and regions. Each one sets up a live system, tells you what to change and what to watch, and ticks off each step as you do it.</p>
+      <p>Every lesson ends with exercises you solve freehand.</p>`,
+  },
+  {
     id: 'scenarios',
     title: 'When you want a question',
     element: '.scenarios-button',
@@ -114,7 +122,7 @@ const MAIN_STEPS: Step[] = [
     element: '.help-button',
     on: 'bottom',
     text: `<p>Load a template, push the dial until something turns red, read the binding pressure, fix it, push again.</p>
-      <p>This button brings the tour back.</p>`,
+      <p>New here? Start with <strong>Learn</strong>. This button brings the tour back.</p>`,
   },
 ];
 
