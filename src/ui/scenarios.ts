@@ -4,7 +4,7 @@ import { describeCriterion, evaluateAll } from '../scenarios/grading';
 import type { Best } from '../scenarios/progress';
 import type { ScenarioRun } from '../scenarios/runner';
 import type { CriterionRole, Scenario } from '../scenarios/types';
-import { h } from './dom';
+import { dialogHeader, h } from './dom';
 
 export interface BriefActions {
   startTest(): void;
@@ -126,7 +126,7 @@ export function openScenarioPicker(progress: Record<string, Best>, onPick: (id: 
   const dialog = h(
     'dialog',
     { class: 'picker' },
-    h('h3', {}, 'Scenarios'),
+    dialogHeader('Scenarios', () => dialog.close()),
     h('p', { class: 'muted small' }, 'Each scenario fixes the traffic, the chaos and the targets. You bring the design. Pass the "Must" targets for one star, stay on budget for two, hit the bonus for three.'),
     h(
       'div',
@@ -150,7 +150,6 @@ export function openScenarioPicker(progress: Record<string, Best>, onPick: (id: 
         );
       }),
     ),
-    h('div', { class: 'actions' }, h('button', { on: { click: () => dialog.close() } }, 'Close')),
   );
   dialog.addEventListener('close', () => dialog.remove());
   document.body.append(dialog);

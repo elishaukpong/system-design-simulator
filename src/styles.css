@@ -1195,6 +1195,32 @@ select:disabled {
 
 dialog.picker {
   max-width: 820px;
+  padding-top: 0;
+}
+
+.dialog-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 -1em 4px;
+  padding: 12px 1em 8px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.dialog-header h3 {
+  margin: 0;
+}
+
+.dialog-close {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 20px;
+  line-height: 1;
 }
 
 .picker-grid {

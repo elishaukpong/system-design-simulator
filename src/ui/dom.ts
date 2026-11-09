@@ -36,3 +36,7 @@ export function isTyping(event: KeyboardEvent): boolean {
   const target = event.target as HTMLElement | null;
   return !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
 }
+
+export function dialogHeader(title: string, close: () => void): HTMLElement {
+  return h('div', { class: 'dialog-header' }, h('h3', {}, title), h('button', { class: 'dialog-close', title: 'Close (Esc)', 'aria-label': 'Close', on: { click: close } }, '×'));
+}

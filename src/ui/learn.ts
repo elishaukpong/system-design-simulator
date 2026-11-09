@@ -2,7 +2,7 @@ import type { CheckStatus } from '../learn/checks';
 import { LESSONS } from '../learn/lessons';
 import type { LearnProgress } from '../learn/progress';
 import type { Exercise, Lesson } from '../learn/types';
-import { h } from './dom';
+import { dialogHeader, h } from './dom';
 
 export type LearnView =
   | { kind: 'lesson'; lesson: Lesson; step: number }
@@ -132,7 +132,7 @@ export function openLessonPicker(progress: LearnProgress, onPick: (id: string) =
   const dialog = h(
     'dialog',
     { class: 'picker' },
-    h('h3', {}, 'Learn'),
+    dialogHeader('Learn', () => dialog.close()),
     h('p', { class: 'muted small' }, 'Short guided lessons on a live system. Each one sets up a design, walks you through what to change and what to watch, then ends with exercises you solve freehand.'),
     ...topics.map((topic) =>
       h(
@@ -165,7 +165,6 @@ export function openLessonPicker(progress: LearnProgress, onPick: (id: string) =
         ),
       ),
     ),
-    h('div', { class: 'actions' }, h('button', { on: { click: () => dialog.close() } }, 'Close')),
   );
   dialog.addEventListener('close', () => dialog.remove());
   document.body.append(dialog);
