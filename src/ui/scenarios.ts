@@ -4,7 +4,7 @@ import { describeCriterion, evaluateAll } from '../scenarios/grading';
 import type { Best } from '../scenarios/progress';
 import type { ScenarioRun } from '../scenarios/runner';
 import type { CriterionRole, Scenario } from '../scenarios/types';
-import { dialogHeader, h } from './dom';
+import { dialogHeader, foldButton, h } from './dom';
 
 export interface BriefActions {
   startTest(): void;
@@ -80,7 +80,12 @@ export class BriefPanel {
         );
 
     this.root.replaceChildren(
-      h('h2', { class: 'panel-title' }, 'Scenario', h('span', { class: 'difficulty' }, difficulty(scenario.difficulty), best ? ` ${stars(best.stars)}` : '')),
+      h(
+        'h2',
+        { class: 'panel-title' },
+        'Scenario',
+        h('span', { class: 'panel-title-end' }, h('span', { class: 'difficulty' }, difficulty(scenario.difficulty), best ? ` ${stars(best.stars)}` : ''), foldButton(this.root)),
+      ),
       h('div', { class: 'brief-title' }, scenario.title),
       ...(testing
         ? [

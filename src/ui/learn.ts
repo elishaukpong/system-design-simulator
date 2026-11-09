@@ -2,7 +2,7 @@ import type { CheckStatus } from '../learn/checks';
 import { LESSONS } from '../learn/lessons';
 import type { LearnProgress } from '../learn/progress';
 import type { Exercise, Lesson } from '../learn/types';
-import { dialogHeader, h } from './dom';
+import { dialogHeader, foldButton, h } from './dom';
 
 export type LearnView =
   | { kind: 'lesson'; lesson: Lesson; step: number }
@@ -40,7 +40,7 @@ export class LearnPanel {
       'h2',
       { class: 'panel-title' },
       view.kind === 'exercise' ? 'Try it' : 'Learn',
-      h('span', { class: 'learn-days' }, dayLabel(lesson.days)),
+      h('span', { class: 'panel-title-end' }, h('span', { class: 'learn-days' }, dayLabel(lesson.days)), foldButton(this.root)),
     );
 
     if (view.kind === 'lesson') {

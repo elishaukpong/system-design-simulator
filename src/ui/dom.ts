@@ -40,3 +40,22 @@ export function isTyping(event: KeyboardEvent): boolean {
 export function dialogHeader(title: string, close: () => void): HTMLElement {
   return h('div', { class: 'dialog-header' }, h('h3', {}, title), h('button', { class: 'dialog-close', title: 'Close (Esc)', 'aria-label': 'Close', on: { click: close } }, '×'));
 }
+
+export function foldButton(panel: HTMLElement): HTMLButtonElement {
+  const label = () => (panel.classList.contains('folded') ? '▴' : '▾');
+  const button = h(
+    'button',
+    {
+      class: 'fold-button',
+      title: 'Fold or unfold this card',
+      on: {
+        click: () => {
+          panel.classList.toggle('folded');
+          button.textContent = label();
+        },
+      },
+    },
+    label(),
+  );
+  return button;
+}

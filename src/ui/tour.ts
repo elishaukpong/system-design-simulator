@@ -131,7 +131,7 @@ const SCENARIO_STEPS: Step[] = [
     id: 'brief',
     title: 'The question',
     element: '#brief',
-    on: 'left',
+    on: 'top',
     text: `<p>The brief, the facts you cannot change, and the targets. <strong>Must</strong> targets earn the first star, <strong>Budget</strong> the second, <strong>Bonus</strong> the third.</p>
       <p>Anything marked 🔒 is part of the scenario. Hints are there when you are stuck.</p>`,
   },
@@ -144,7 +144,7 @@ const SCENARIO_STEPS: Step[] = [
     id: 'start',
     title: 'Then take the test',
     element: '#brief .actions',
-    on: 'left',
+    on: 'top',
     text: `<p><strong>Start test</strong> locks the design and plays the scripted traffic and chaos. The checks update live. At the end, the debrief shows what gave way, the trade-offs you accepted, and a 3D replay.</p>`,
   },
 ];

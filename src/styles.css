@@ -312,6 +312,7 @@ input[type='range'] {
 .label-layer {
   position: absolute;
   inset: 0;
+  z-index: 1;
   pointer-events: none;
 }
 
@@ -395,7 +396,7 @@ input[type='range'] {
   gap: 8px;
 }
 
-#dock:has(#learn:not([hidden])) #metrics {
+#dock:has(#learn:not([hidden]), #brief:not([hidden])) #metrics {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
@@ -483,19 +484,14 @@ input[type='range'] {
   overflow-y: auto;
 }
 
-#brief {
-  flex: none;
-  max-height: 55%;
-  overflow-y: auto;
-  background: linear-gradient(180deg, rgba(56, 189, 248, 0.07), transparent 60%);
-}
 
 #brief[hidden],
 #learn[hidden] {
   display: none;
 }
 
-#learn {
+#learn,
+#brief {
   flex: 0 0 380px;
   max-height: min(48vh, 420px);
   overflow-y: auto;
@@ -505,6 +501,11 @@ input[type='range'] {
   background: linear-gradient(180deg, rgba(167, 139, 250, 0.1), transparent 70%), rgba(14, 21, 37, 0.94);
   backdrop-filter: blur(6px);
   pointer-events: auto;
+}
+
+#brief {
+  border-color: rgba(56, 189, 248, 0.35);
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.08), transparent 70%), rgba(14, 21, 37, 0.94);
 }
 
 .learn-days {
@@ -1747,10 +1748,29 @@ svg.chart .strip-label { fill: #0b1120; font: 600 10.5px Inter, sans-serif; }
     flex-direction: column;
     align-items: stretch;
   }
-  #learn {
+  #learn,
+  #brief {
     flex: none;
     align-self: flex-start;
     width: min(100%, 480px);
     max-height: 36vh;
   }
+}
+
+.panel-title-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fold-button {
+  padding: 0 7px;
+  line-height: 18px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+#learn.folded > :not(.panel-title, .brief-title, .learn-step-title, .live-checks, .actions, .learn-banner),
+#brief.folded > :not(.panel-title, .brief-title, .live-checks, .actions, .progress) {
+  display: none;
 }
