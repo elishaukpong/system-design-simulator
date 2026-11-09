@@ -90,7 +90,7 @@ const MAIN_STEPS: Step[] = [
     title: 'Tune and break things',
     element: '#inspector',
     on: 'left',
-    text: `<p>Click a component to see its live numbers and change its settings: instances, size, cache hit ratio, retries, standby region.</p>
+    text: `<p>Click a component. Its health and four key numbers sit at the top. <strong>Live</strong> has the details, <strong>Settings</strong> has the dials: instances, size, cache hit ratio, retries, standby region.</p>
       <p>Then break it on purpose: <strong>Kill</strong> it, <strong>Flush</strong> a cache, or take down a whole region.</p>`,
   },
   {

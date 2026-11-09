@@ -98,7 +98,7 @@ export const LESSONS: Lesson[] = [
       {
         title: 'Scale up',
         body: `<p>In the inspector, change <strong>Instance size</strong> to <strong>large</strong> or bigger. Each step doubles the capacity and doubles the price.</p><p>No code changes, no new moving parts. That is why vertical scaling is always the first move.</p>`,
-        focus: { node: 'app' },
+        focus: { node: 'app', tab: 'settings' },
         task: { label: 'App size large or bigger', test: (ctx) => nodesOf(ctx, 'app').some((n) => sizeMultiplier(n.params) >= 4) },
       },
       {
@@ -439,7 +439,7 @@ export const LESSONS: Lesson[] = [
       {
         title: 'Every copy is behind',
         body: `<p>Click the replicas and find <strong>Replication lag</strong>. Each write reaches the primary first and the copies a moment later.</p><p>A user who saves a profile and reloads straight away may read the old one from a replica. That is the read-your-writes problem, and it costs more trust than it costs CPU.</p>`,
-        focus: { element: '#inspector' },
+        focus: { element: '#inspector', tab: 'live' },
         task: { label: 'See replication lag', test: (ctx) => metricsOf(ctx, 'replica').some((m) => (m.replicationLag ?? 0) > 0) },
       },
       {
@@ -514,7 +514,7 @@ export const LESSONS: Lesson[] = [
       {
         title: 'Jobs that run twice',
         body: `<p>Sometimes a job works but the "done" reply is lost. The queue cannot tell, so it hands the job out again. If the job charges a card, the card is charged twice.</p><p>Click the workers and turn on <strong>Idempotent jobs</strong>: running a job twice now has the same effect as once. The queue gives you at-least-once delivery. Idempotency gives you exactly-once effect.</p>`,
-        focus: { element: '#inspector' },
+        focus: { element: '#inspector', tab: 'settings' },
         task: { label: 'Idempotent jobs on', test: (ctx) => nodesOf(ctx, 'workers').some((n) => n.params.idempotent === true) },
       },
     ],
@@ -691,7 +691,7 @@ export const LESSONS: Lesson[] = [
       {
         title: 'Set the limit under capacity',
         body: `<p>Eight servers handle about 1,100 rps. Click the gateway and set its <strong>Rate limit</strong> to about 1,000 rps.</p><p>During a spike, the extra requests get a fast 429 "try later" and show in <strong>SHED</strong>. The servers never overload, so they never crash.</p>`,
-        focus: { element: '#inspector' },
+        focus: { element: '#inspector', tab: 'settings' },
         task: { label: 'Requests being shed', test: (ctx) => running(ctx) && ctx.snap!.global.shedRate > 0.05 },
       },
     ],

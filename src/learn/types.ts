@@ -1,4 +1,5 @@
 import type { SavedState } from '../state/store';
+import type { InspectorTab } from '../ui/inspector';
 import type { Design, SimEvent, SimSnapshot, TrafficSettings } from '../sim/types';
 
 export interface LearnContext {
@@ -17,6 +18,7 @@ export interface Check {
 export interface Focus {
   node?: string;
   element?: string;
+  tab?: InspectorTab;
 }
 
 export interface LessonStep {

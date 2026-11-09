@@ -277,6 +277,7 @@ function applyFocus(focus: Focus | undefined): void {
     spotlit = document.querySelector(focus.element);
     spotlit?.classList.add('learn-spot');
   }
+  if (focus?.tab) inspector.showTab(focus.tab);
   if (focus?.node && store.node(focus.node)) store.select({ type: 'node', id: focus.node });
 }
 
