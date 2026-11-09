@@ -26,7 +26,8 @@ const MAX_EXP = 6;
 export class Toolbar {
   private runButton: HTMLButtonElement;
   private connectButton: HTMLButtonElement;
-  private speedButtons = new Map<number, HTMLButtonElement>();
+  private speedButton: HTMLButtonElement;
+  private speed = 1;
   private slider: HTMLInputElement;
   private trafficValue: HTMLInputElement;
   private shapeSelect: HTMLSelectElement;
@@ -88,12 +89,30 @@ export class Toolbar {
     );
 
     this.runButton = h('button', { class: 'primary run-button', title: 'Run / pause (Space)', on: { click: () => actions.toggleRun() } }, '▶ Run');
-    const speeds = h('div', { class: 'tool-group' });
-    for (const speed of SPEEDS) {
-      const button = h('button', { title: `Simulation speed ${speed}×`, on: { click: () => actions.setSpeed(speed) } }, `${speed}×`);
-      this.speedButtons.set(speed, button);
-      speeds.append(button);
-    }
+    this.speedButton = h(
+      'button',
+      {
+        class: 'speed-button',
+        title: 'Simulation speed. Click to cycle 1× → 2× → 5× → 10×.',
+        on: { click: () => actions.setSpeed(SPEEDS[(SPEEDS.indexOf(this.speed) + 1) % SPEEDS.length]) },
+      },
+      '1×',
+    );
+    const menu = h(
+      'details',
+      { class: 'more-menu' },
+      h('summary', { title: 'More: export, import, clear' }, '⋯'),
+      h(
+        'div',
+        { class: 'more-menu-list' },
+        h('button', { title: 'Export the design as an image or JSON', on: { click: () => { menu.open = false; actions.exportDesign(); } } }, 'Export'),
+        h('button', { title: 'Import a design from JSON', on: { click: () => { menu.open = false; actions.importDesign(); } } }, 'Import'),
+        h('button', { class: 'danger', title: 'Remove everything', on: { click: () => { menu.open = false; actions.clear(); } } }, 'Clear'),
+      ),
+    );
+    document.addEventListener('click', (event) => {
+      if (menu.open && !menu.contains(event.target as Node)) menu.open = false;
+    });
     this.clock = h('span', { class: 'clock', title: 'Simulated time' }, 't=0s');
     this.connectButton = h('button', { title: 'Connect mode (C): drag from one component to another', on: { click: () => actions.toggleConnect() } }, '⤳ Connect');
 
@@ -104,16 +123,14 @@ export class Toolbar {
       h('button', { class: 'scenarios-button', title: 'Graded design challenges', on: { click: () => actions.openScenarios() } }, '🎯 Scenarios'),
       templateSelect,
       h('div', { class: 'traffic' }, h('label', {}, 'Traffic'), this.slider, this.trafficValue, this.shapeSelect),
-      h('div', { class: 'tool-group' }, this.runButton, speeds, h('button', { title: 'Reset the simulation (R). Keeps the design.', on: { click: () => actions.resetSim() } }, '↺'), this.clock),
+      h('div', { class: 'tool-group' }, this.runButton, this.speedButton, h('button', { title: 'Reset the simulation (R). Keeps the design.', on: { click: () => actions.resetSim() } }, '↺'), this.clock),
       h('div', { class: 'tool-sep' }),
       h(
         'div',
         { class: 'tool-group' },
         this.connectButton,
         h('button', { title: 'Fit the design in view (F)', on: { click: () => actions.fit() } }, '⤢'),
-        h('button', { title: 'Export the design as JSON', on: { click: () => actions.exportDesign() } }, 'Export'),
-        h('button', { title: 'Import a design from JSON', on: { click: () => actions.importDesign() } }, 'Import'),
-        h('button', { class: 'danger', title: 'Remove everything', on: { click: () => actions.clear() } }, 'Clear'),
+        menu,
       ),
     );
 
@@ -132,7 +149,9 @@ export class Toolbar {
   update(running: boolean, speed: number, connectMode: boolean, t: number): void {
     this.runButton.textContent = running ? '❚❚ Pause' : '▶ Run';
     this.runButton.classList.toggle('primary', !running);
-    for (const [s, button] of this.speedButtons) button.classList.toggle('active', s === speed);
+    this.speed = speed;
+    this.speedButton.textContent = `${speed}×`;
+    this.speedButton.classList.toggle('active', speed > 1);
     this.connectButton.classList.toggle('active', connectMode);
     this.clock.textContent = `t=${formatTime(t)}`;
   }
