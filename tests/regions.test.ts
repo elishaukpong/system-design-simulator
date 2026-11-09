@@ -141,4 +141,30 @@ describe('regions', () => {
     expect(snap.nodes.a.inRps).toBeCloseTo(75, 0);
     expect(snap.nodes.b.inRps).toBeCloseTo(25, 0);
   });
+
+  it('a killed clients group stops sending instead of failing', () => {
+    const d = design(
+      [
+        ['a', 'clients', US, { staticPct: 0, retries: 0 }],
+        ['b', 'clients', US, { staticPct: 0, retries: 0 }],
+        ['c', 'clients', US, { staticPct: 0, retries: 0 }],
+        ['app', 'app', US, { instances: 4, searchPct: 0 }],
+      ],
+      [
+        ['a', 'app'],
+        ['b', 'app'],
+        ['c', 'app'],
+      ],
+    );
+    const sim = new Simulation();
+    sim.setDesign(d);
+    sim.setTraffic({ peakRps: 90, shape: 'steady' });
+    steps(sim, 2);
+    sim.kill('c');
+    const snap = steps(sim, 2);
+
+    expect(snap.global.offeredRps).toBeCloseTo(60, 0);
+    expect(snap.nodes.app.inRps).toBeCloseTo(60, 0);
+    expect(snap.global.errorRate).toBeLessThan(0.001);
+  });
 });

@@ -186,7 +186,11 @@ export class Simulation {
     this.log(
       nodeId,
       'error',
-      fraction >= 1 ? `${node.name} killed. Back in ${downSeconds}s.` : `${node.name}: lost ${victims.length} of ${st.instances.length} instances for ${downSeconds}s.`,
+      node.kind === 'clients'
+        ? `${node.name} stopped sending for ${downSeconds}s.`
+        : fraction >= 1
+          ? `${node.name} killed. Back in ${downSeconds}s.`
+          : `${node.name}: lost ${victims.length} of ${st.instances.length} instances for ${downSeconds}s.`,
     );
   }
 
@@ -243,10 +247,12 @@ export class Simulation {
     const metrics: Record<string, NodeMetrics> = {};
     const own = new Map<string, { success: number; latency: number; p99: number }>();
 
-    const offered = this.script ? Math.max(0, this.script(t)) : this.traffic.peakRps * trafficMultiplier(this.traffic.shape, t);
+    const demand = this.script ? Math.max(0, this.script(t)) : this.traffic.peakRps * trafficMultiplier(this.traffic.shape, t);
     const clientNodes = nodes.filter((n) => n.kind === 'clients');
     const totalWeight = clientNodes.reduce((sum, c) => sum + Math.max(0, numberParam(c.params, 'sharePct', 100)), 0) || 1;
-    const shareOf = (client: NodeSpec) => (offered * Math.max(0, numberParam(client.params, 'sharePct', 100))) / totalWeight;
+    const shareOf = (client: NodeSpec) =>
+      this.isUp(client) ? (demand * Math.max(0, numberParam(client.params, 'sharePct', 100))) / totalWeight : 0;
+    const offered = clientNodes.reduce((sum, c) => sum + shareOf(c), 0);
     let attempted = 0;
 
     for (const client of clientNodes) {
