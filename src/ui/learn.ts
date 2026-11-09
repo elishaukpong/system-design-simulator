@@ -2,7 +2,7 @@ import type { CheckStatus } from '../learn/checks';
 import { LESSONS } from '../learn/lessons';
 import type { LearnProgress } from '../learn/progress';
 import type { Exercise, Lesson } from '../learn/types';
-import { dialogHeader, foldButton, h } from './dom';
+import { dialogHeader, foldButton, h, restoreOnClick } from './dom';
 
 export type LearnView =
   | { kind: 'lesson'; lesson: Lesson; step: number }
@@ -25,6 +25,7 @@ export class LearnPanel {
 
   constructor(private root: HTMLElement, private actions: LearnActions) {
     this.root.hidden = true;
+    restoreOnClick(this.root);
   }
 
   render(view: LearnView | null, progress: LearnProgress): void {

@@ -42,20 +42,24 @@ export function dialogHeader(title: string, close: () => void): HTMLElement {
 }
 
 export function foldButton(panel: HTMLElement): HTMLButtonElement {
-  const label = () => (panel.classList.contains('folded') ? '▴' : '▾');
-  const button = h(
-    'button',
-    {
-      class: 'fold-button',
-      title: 'Fold or unfold this card',
-      on: {
-        click: () => {
-          panel.classList.toggle('folded');
-          button.textContent = label();
-        },
-      },
-    },
-    label(),
-  );
+  const button = h('button', { class: 'fold-button', on: { click: (event) => { event.stopPropagation(); setMinimized(panel, !panel.classList.contains('minimized')); } } });
+  labelFold(button, panel.classList.contains('minimized'));
   return button;
+}
+
+export function restoreOnClick(panel: HTMLElement): void {
+  panel.addEventListener('click', () => {
+    if (panel.classList.contains('minimized')) setMinimized(panel, false);
+  });
+}
+
+function setMinimized(panel: HTMLElement, minimized: boolean): void {
+  panel.classList.toggle('minimized', minimized);
+  const button = panel.querySelector<HTMLButtonElement>('.fold-button');
+  if (button) labelFold(button, minimized);
+}
+
+function labelFold(button: HTMLButtonElement, minimized: boolean): void {
+  button.textContent = minimized ? '▴' : '–';
+  button.title = minimized ? 'Restore' : 'Minimize';
 }

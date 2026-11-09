@@ -4,7 +4,7 @@ import { describeCriterion, evaluateAll } from '../scenarios/grading';
 import type { Best } from '../scenarios/progress';
 import type { ScenarioRun } from '../scenarios/runner';
 import type { CriterionRole, Scenario } from '../scenarios/types';
-import { dialogHeader, foldButton, h } from './dom';
+import { dialogHeader, foldButton, h, restoreOnClick } from './dom';
 
 export interface BriefActions {
   startTest(): void;
@@ -26,6 +26,7 @@ export class BriefPanel {
 
   constructor(private root: HTMLElement, private actions: BriefActions) {
     this.root.hidden = true;
+    restoreOnClick(this.root);
   }
 
   render(scenario: Scenario | null, run: ScenarioRun | null, best: Best | undefined, hasResult: boolean): void {

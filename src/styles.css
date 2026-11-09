@@ -1783,7 +1783,28 @@ svg.chart .strip-label { fill: #0b1120; font: 600 10.5px Inter, sans-serif; }
   color: var(--muted);
 }
 
-#learn.folded > :not(.panel-title, .brief-title, .learn-step-title, .live-checks, .actions, .learn-banner),
-#brief.folded > :not(.panel-title, .brief-title, .live-checks, .actions, .progress) {
+#learn.minimized,
+#brief.minimized {
+  flex: none;
+  width: auto;
+  max-width: 380px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+#learn.minimized > :not(.panel-title, .brief-title),
+#brief.minimized > :not(.panel-title, .brief-title) {
   display: none;
+}
+
+#learn.minimized .panel-title,
+#brief.minimized .panel-title {
+  margin-bottom: 2px;
+  gap: 12px;
+}
+
+#learn.minimized .brief-title,
+#brief.minimized .brief-title {
+  font-size: 13px;
+  margin: 0;
 }
