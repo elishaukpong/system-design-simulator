@@ -3,6 +3,7 @@ import type { Store } from '../state/store';
 import { templateList } from '../state/templates';
 import type { TrafficShape } from '../sim/types';
 import { h } from './dom';
+import { parseRps } from './rps';
 
 export interface ToolbarActions {
   loadTemplate(id: string): void;
@@ -27,7 +28,7 @@ export class Toolbar {
   private connectButton: HTMLButtonElement;
   private speedButtons = new Map<number, HTMLButtonElement>();
   private slider: HTMLInputElement;
-  private trafficValue: HTMLElement;
+  private trafficValue: HTMLInputElement;
   private shapeSelect: HTMLSelectElement;
   private clock: HTMLElement;
 
@@ -56,7 +57,27 @@ export class Toolbar {
       title: 'Peak requests per second (log scale)',
       on: { input: () => store.setTraffic({ peakRps: this.sliderToRps() }) },
     });
-    this.trafficValue = h('span', { class: 'traffic-value' });
+    this.trafficValue = h('input', {
+      class: 'traffic-value',
+      type: 'text',
+      inputMode: 'decimal',
+      spellcheck: false,
+      title: 'Type a rate: 2000, 2k, 1.5M. Enter to apply, Esc to cancel.',
+      on: {
+        focus: () => {
+          this.trafficValue.value = String(this.store.traffic.peakRps);
+          this.trafficValue.select();
+        },
+        keydown: (event: KeyboardEvent) => {
+          if (event.key === 'Enter') this.trafficValue.blur();
+          if (event.key === 'Escape') {
+            this.trafficValue.value = String(this.store.traffic.peakRps);
+            this.trafficValue.blur();
+          }
+        },
+        blur: () => this.applyTyped(),
+      },
+    });
     this.shapeSelect = h(
       'select',
       { title: 'Traffic shape over time', on: { change: () => store.setTraffic({ shape: this.shapeSelect.value as TrafficShape }) } },
@@ -103,7 +124,8 @@ export class Toolbar {
   setScripted(scripted: boolean): void {
     this.slider.disabled = scripted;
     this.shapeSelect.disabled = scripted;
-    if (scripted) this.trafficValue.textContent = 'scripted';
+    this.trafficValue.disabled = scripted;
+    if (scripted) this.trafficValue.value = 'scripted';
     else this.syncTraffic();
   }
 
@@ -115,6 +137,14 @@ export class Toolbar {
     this.clock.textContent = `t=${formatTime(t)}`;
   }
 
+  private applyTyped(): void {
+    const rps = parseRps(this.trafficValue.value);
+    this.trafficValue.classList.toggle('invalid', rps === null);
+    if (rps !== null) this.store.setTraffic({ peakRps: rps });
+    else window.setTimeout(() => this.trafficValue.classList.remove('invalid'), 900);
+    this.syncTraffic();
+  }
+
   private sliderToRps(): number {
     const raw = Math.pow(10, Number(this.slider.value));
     const magnitude = Math.pow(10, Math.floor(Math.log10(raw)) - 1);
@@ -124,7 +154,7 @@ export class Toolbar {
   private syncTraffic(): void {
     const { peakRps, shape } = this.store.traffic;
     if (document.activeElement !== this.slider) this.slider.value = String(Math.log10(Math.max(1, peakRps)));
-    this.trafficValue.textContent = `${formatRps(peakRps)} rps`;
+    if (document.activeElement !== this.trafficValue) this.trafficValue.value = `${formatRps(peakRps)} rps`;
     this.shapeSelect.value = shape;
   }
 }
