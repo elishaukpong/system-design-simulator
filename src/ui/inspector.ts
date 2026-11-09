@@ -69,6 +69,7 @@ export class Inspector {
     this.root.parentElement?.classList.toggle('inspecting', selected);
 
     if (!sel || !selected) {
+      this.root.hidden = hintSeen();
       this.root.append(
         h('h2', { class: 'panel-title' }, 'Inspector'),
         h(
@@ -82,6 +83,8 @@ export class Inspector {
       return;
     }
 
+    this.root.hidden = false;
+    markHintSeen();
     if (sel.type === 'edge') this.renderEdge(sel.id);
     else this.renderNode(sel.id);
   }
@@ -423,6 +426,24 @@ export class Inspector {
     const sel = this.store.selection;
     if (!sel) return false;
     return sel.type === 'node' ? !!this.store.node(sel.id) : !!this.store.edge(sel.id);
+  }
+}
+
+const HINT_KEY = 'sds:inspector:hint:v1';
+
+function hintSeen(): boolean {
+  try {
+    return localStorage.getItem(HINT_KEY) === 'seen';
+  } catch {
+    return false;
+  }
+}
+
+function markHintSeen(): void {
+  try {
+    localStorage.setItem(HINT_KEY, 'seen');
+  } catch {
+    // Without storage the hint keeps showing when nothing is selected, which is harmless.
   }
 }
 

@@ -8,7 +8,7 @@ type Step = {
   id: string;
   title: string;
   text: string;
-  element?: string;
+  element?: string | (() => HTMLElement | null);
   on?: 'top' | 'bottom' | 'left' | 'right' | 'bottom-start';
 };
 
@@ -88,7 +88,7 @@ const MAIN_STEPS: Step[] = [
   {
     id: 'inspector',
     title: 'Tune and break things',
-    element: '#inspector',
+    element: () => document.querySelector<HTMLElement>('#inspector:not([hidden])') ?? document.getElementById('sidebar'),
     on: 'left',
     text: `<p>Click a component. Its health and four key numbers sit at the top. <strong>Live</strong> has the details, <strong>Settings</strong> has the dials: instances, size, cache hit ratio, retries, standby region.</p>
       <p>Then break it on purpose: <strong>Kill</strong> it, <strong>Flush</strong> a cache, or take down a whole region.</p>`,
