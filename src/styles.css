@@ -629,10 +629,14 @@ input[type='range'] {
 }
 
 #events {
-  flex: none;
-  height: 170px;
+  flex: 1;
+  min-height: 170px;
   overflow-y: auto;
   font-size: 11.5px;
+}
+
+#sidebar:not(.inspecting) #inspector {
+  flex: none;
 }
 
 .panel-title {
@@ -752,7 +756,9 @@ input[type='range'] {
 }
 
 #sidebar.inspecting #events {
-  height: 96px;
+  flex: none;
+  height: 160px;
+  min-height: 0;
 }
 
 .insp-top {
