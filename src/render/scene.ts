@@ -41,6 +41,7 @@ interface EdgeView {
   arrow: THREE.Mesh;
   hit: THREE.Mesh;
   rttLabel: CSS2DObject | null;
+  shareLabel: CSS2DObject | null;
   spawn: Record<TrafficClass, number>;
   index: number;
 }
@@ -245,7 +246,7 @@ export class SceneView {
       .map((e) => {
         const from = this.nodes.get(e.from)?.spec;
         const to = this.nodes.get(e.to)?.spec;
-        return from && to ? `${e.id}:${from.x},${from.z}>${to.x},${to.z}:${e.latencyMs ?? 0}` : '';
+        return from && to ? `${e.id}:${from.x},${from.z}>${to.x},${to.z}:${e.latencyMs ?? 0}:${e.sharePct ?? ''}` : '';
       })
       .join('|');
     if (edgeSignature === this.edgeSignature) {
@@ -261,6 +262,7 @@ export class SceneView {
       const to = this.nodes.get(spec.to);
       if (!from || !to) continue;
       const view = this.createEdgeView(spec, from.spec, to.spec, this.edgeList.length);
+      if (from.spec.kind === 'gateway') view.shareLabel = this.shareLabel(view, design);
       this.edges.set(spec.id, view);
       this.edgeList.push(view);
     }
@@ -414,6 +416,10 @@ export class SceneView {
     };
 
     for (const edge of this.edgeList) {
+      if (edge.shareLabel) {
+        const share = project(edge.shareLabel.position);
+        if (share.visible) drawPill(ctx, edge.shareLabel.element.textContent ?? '', share.x, share.y, { text: '#f5d0fe', fill: 'rgba(7,11,22,0.85)', stroke: '#a21caf', dashed: false });
+      }
       if (!edge.rttLabel) continue;
       const at = project(edge.rttLabel.position);
       if (at.visible) drawPill(ctx, edge.rttLabel.element.textContent ?? '', at.x, at.y, { text: '#fde68a', fill: 'rgba(7,11,22,0.85)', stroke: '#a16207', dashed: true });
@@ -711,13 +717,27 @@ export class SceneView {
       rttLabel.position.copy(curve.getPointAt(0.5));
       this.scene.add(rttLabel);
     }
-    return { spec, curve, length: curve.getLength(), tube, arrow, hit, rttLabel, spawn: { static: 0, read: 0, write: 0 }, index };
+    return { spec, curve, length: curve.getLength(), tube, arrow, hit, rttLabel, shareLabel: null, spawn: { static: 0, read: 0, write: 0 }, index };
+  }
+
+  private shareLabel(view: EdgeView, design: Design): CSS2DObject | null {
+    const siblings = design.edges.filter((e) => e.from === view.spec.from);
+    if (siblings.length < 2) return null;
+    const total = siblings.reduce((sum, e) => sum + (e.sharePct ?? 100), 0);
+    const el = document.createElement('div');
+    el.className = 'share-label';
+    el.textContent = `${total > 0 ? Math.round(((view.spec.sharePct ?? 100) / total) * 100) : 0}%`;
+    const label = new CSS2DObject(el);
+    label.position.copy(view.curve.getPointAt(view.rttLabel ? 0.3 : 0.62));
+    this.scene.add(label);
+    return label;
   }
 
   private removeEdgeView(view: EdgeView): void {
-    if (view.rttLabel) {
-      view.rttLabel.element.remove();
-      this.scene.remove(view.rttLabel);
+    for (const label of [view.rttLabel, view.shareLabel]) {
+      if (!label) continue;
+      label.element.remove();
+      this.scene.remove(label);
     }
     for (const m of [view.tube, view.hit, view.arrow]) {
       this.scene.remove(m);

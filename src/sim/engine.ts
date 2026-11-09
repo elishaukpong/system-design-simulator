@@ -989,6 +989,11 @@ export class Simulation {
   }
 
   private splitWeights(node: NodeSpec, targets: Link[], byId: Map<string, NodeSpec>): number[] {
+    if (node.kind === 'gateway') {
+      const shares = targets.map((target) => Math.max(0, this.design.edges.find((e) => e.id === target.edgeId)?.sharePct ?? 100));
+      const sum = shares.reduce((a, b) => a + b, 0);
+      if (sum > 0) return shares.map((share) => share / sum);
+    }
     if (node.kind === 'lb' && node.params.algorithm === 'least-connections') {
       const caps = targets.map((target) => Math.max(0, this.stateFor(byId.get(target.child)!).capacityRps));
       const sum = caps.reduce((a, b) => a + b, 0);

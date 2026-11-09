@@ -66,14 +66,16 @@ export class Inspector {
         on: {
           input: () => {
             extraValue.textContent = `${extraSlider.value} ms`;
-            this.store.setEdgeLatency(edge.id, Number(extraSlider.value));
           },
+          change: () => this.store.setEdgeLatency(edge.id, Number(extraSlider.value)),
         },
       });
+      const shareField = from.kind === 'gateway' ? this.shareField(edge.id, from.id) : null;
       this.root.append(
         h('h2', { class: 'panel-title' }, 'Connection'),
         h('div', { class: 'insp-head' }, h('strong', {}, `${from.name} → ${to.name}`)),
         this.live,
+        ...(shareField ? [shareField] : []),
         h(
           'div',
           { class: 'field' },
@@ -121,6 +123,38 @@ export class Inspector {
       this.live,
       params,
       chaos,
+    );
+  }
+
+  private shareField(edgeId: string, gatewayId: string): HTMLElement {
+    const siblings = this.store.design.edges.filter((e) => e.from === gatewayId);
+    const weightOf = (id: string, own: number) => siblings.reduce((sum, e) => sum + (e.id === id ? own : e.sharePct ?? 100), 0);
+    const current = this.store.edge(edgeId)?.sharePct ?? 100;
+    const effective = (own: number) => {
+      const total = weightOf(edgeId, own);
+      return total > 0 ? Math.round((own / total) * 100) : 0;
+    };
+    const value = h('span', { class: 'field-value' }, `${effective(current)}%`);
+    const slider = h('input', {
+      type: 'range',
+      min: '0',
+      max: '100',
+      step: '5',
+      value: String(current),
+      disabled: this.store.editingLocked,
+      on: {
+        input: () => {
+          value.textContent = `${effective(Number(slider.value))}%`;
+        },
+        change: () => this.store.setEdgeShare(edgeId, Number(slider.value)),
+      },
+    });
+    return h(
+      'div',
+      { class: 'field' },
+      h('div', { class: 'field-row' }, h('span', { class: 'field-label' }, 'Path share'), value),
+      slider,
+      h('div', { class: 'field-help' }, 'How much of the gateway\'s traffic goes down this path, like /search or /checkout. Shares are relative to the other paths.'),
     );
   }
 

@@ -39,6 +39,7 @@ export interface EdgeSpec {
   from: string;
   to: string;
   latencyMs?: number;
+  sharePct?: number;
 }
 
 export interface Design {

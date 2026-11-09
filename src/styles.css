@@ -300,6 +300,24 @@ input[type='range'] {
 .node-label[data-status='down'] .node-label-stat { color: #fff; background: #7f1d1d; border-color: var(--bad); font-weight: 600; }
 .node-label.selected .node-label-name { color: #7dd3fc; }
 
+.tour-pill {
+  font: 600 11px var(--mono);
+  color: #f5d0fe;
+  border: 1px solid #a21caf;
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
+.share-label {
+  pointer-events: none;
+  font: 600 10.5px var(--mono);
+  color: #f5d0fe;
+  background: rgba(7, 11, 22, 0.85);
+  border: 1px solid #a21caf;
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
 .rtt-label {
   pointer-events: none;
   font: 600 10.5px var(--mono);

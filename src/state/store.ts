@@ -126,6 +126,13 @@ export class Store {
     this.emitDesign();
   }
 
+  setEdgeShare(id: string, pct: number): void {
+    const edge = this.edge(id);
+    if (this.editingLocked || !edge) return;
+    edge.sharePct = pct;
+    this.emitDesign();
+  }
+
   reverseEdge(id: string): void {
     const edge = this.edge(id);
     if (this.editingLocked || !edge) return;

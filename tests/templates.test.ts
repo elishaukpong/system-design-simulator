@@ -22,8 +22,8 @@ function simulate(id: string, seconds: number) {
 }
 
 describe('templates', () => {
-  it('has ten', () => {
-    expect(templateList()).toHaveLength(10);
+  it('has eleven', () => {
+    expect(templateList()).toHaveLength(11);
   });
 
   it.each(templateList().map((t) => t.id))('%s is well-formed', (id) => {
@@ -46,7 +46,7 @@ describe('templates', () => {
     expect(maxErrorRate).toBeLessThanOrEqual(1);
   });
 
-  it.each(['monolith', 'three-tier', 'async', 'url-shortener', 'news-feed', 'upload-pipeline'])('%s holds at its starting traffic', (id) => {
+  it.each(['monolith', 'three-tier', 'async', 'url-shortener', 'news-feed', 'upload-pipeline', 'microservices'])('%s holds at its starting traffic', (id) => {
     const { maxErrorRate } = simulate(id, 120);
 
     expect(maxErrorRate).toBeLessThan(0.01);

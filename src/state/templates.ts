@@ -8,7 +8,7 @@ interface Template {
   blurb: string;
   traffic: TrafficSettings;
   nodes: Array<[id: string, kind: ComponentKind, x: number, z: number, params?: Record<string, ParamValue>, name?: string]>;
-  edges: Array<[string, string]>;
+  edges: Array<[from: string, to: string, sharePct?: number]>;
 }
 
 const TEMPLATE_SPREAD = 1.5;
@@ -241,6 +241,36 @@ const TEMPLATES: Template[] = [
       ['app', 'db'],
     ],
   },
+  {
+    id: 'microservices',
+    label: 'Microservices behind a gateway',
+    blurb: 'The gateway splits by path: search takes most of the traffic, checkout the least. Scale each service on its own, and kill one to see only its path fail.',
+    traffic: { peakRps: 1500, shape: 'steady' },
+    nodes: [
+      ['clients', 'clients', -16, 0, { staticPct: 0, writePct: 10 }],
+      ['gw', 'gateway', -8, 0, { rateLimitRps: 20000 }],
+      ['search', 'app', 0, -8, { instances: 12, searchPct: 0, externalCallPct: 0 }, 'search-svc'],
+      ['users', 'app', 0, 0, { instances: 4, searchPct: 0, externalCallPct: 0 }, 'users-svc'],
+      ['checkout', 'app', 0, 8, { instances: 2, searchPct: 0, externalCallPct: 0 }, 'checkout-svc'],
+      ['search-cache', 'cache', 8, -8],
+      ['search-db', 'replica', 16, -8, {}, 'Catalog Replicas'],
+      ['users-db', 'db', 8, 0, {}, 'Users DB'],
+      ['orders-db', 'db', 8, 8, {}, 'Orders DB'],
+      ['catalog-db', 'db', 24, -8, {}, 'Catalog DB'],
+    ],
+    edges: [
+      ['clients', 'gw'],
+      ['gw', 'search', 70],
+      ['gw', 'users', 20],
+      ['gw', 'checkout', 10],
+      ['search', 'search-cache'],
+      ['search', 'search-db'],
+      ['search', 'catalog-db'],
+      ['catalog-db', 'search-db'],
+      ['users', 'users-db'],
+      ['checkout', 'orders-db'],
+    ],
+  },
 ];
 
 export function templateList(): Array<{ id: string; label: string; blurb: string }> {
@@ -261,7 +291,7 @@ export function buildTemplate(id: string): SavedState {
         z: z * TEMPLATE_SPREAD,
         params: { ...defaultParams(kind), ...params },
       })),
-      edges: template.edges.map(([from, to]) => ({ id: `${from}->${to}`, from, to })),
+      edges: template.edges.map(([from, to, sharePct]) => ({ id: `${from}->${to}`, from, to, ...(sharePct === undefined ? {} : { sharePct }) })),
     },
   };
 }

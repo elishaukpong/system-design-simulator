@@ -248,3 +248,43 @@ describe('dns routes by where the users are', () => {
     expect(snap.nodes['users-eu'].pathLatency - snap.nodes['users-us'].pathLatency).toBeGreaterThan(0.07);
   });
 });
+
+describe('gateway path routing', () => {
+  const services = () => {
+    const d = design(
+      [
+        ['users', 'clients', US, { staticPct: 0, retries: 0 }],
+        ['gw', 'gateway', US, { rateLimit: false }],
+        ['search', 'app', US, { instances: 6, searchPct: 0, externalCallPct: 0 }],
+        ['checkout', 'app', US, { instances: 6, searchPct: 0, externalCallPct: 0 }],
+      ],
+      [
+        ['users', 'gw'],
+        ['gw', 'search'],
+        ['gw', 'checkout'],
+      ],
+    );
+    d.edges.find((e) => e.id === 'gw->search')!.sharePct = 70;
+    d.edges.find((e) => e.id === 'gw->checkout')!.sharePct = 30;
+    return d;
+  };
+
+  it('splits traffic by each path share', () => {
+    const sim = new Simulation();
+    sim.setDesign(services());
+    sim.setTraffic({ peakRps: 500, shape: 'steady' });
+    const snap = steps(sim, 10);
+    expect(snap.nodes.search.inRps).toBeCloseTo(350, -1);
+    expect(snap.nodes.checkout.inRps).toBeCloseTo(150, -1);
+  });
+
+  it('fails only the dead service path', () => {
+    const sim = new Simulation();
+    sim.setDesign(services());
+    sim.setTraffic({ peakRps: 500, shape: 'steady' });
+    steps(sim, 10);
+    sim.kill('checkout');
+    const snap = steps(sim, 3);
+    expect(snap.global.errorRate).toBeCloseTo(0.3, 1);
+  });
+});
