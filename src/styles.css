@@ -1502,12 +1502,25 @@ dialog.debrief {
 }
 
 .debrief-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
-  justify-content: space-between;
   align-items: flex-end;
   gap: 16px;
-  padding-bottom: 10px;
+  margin: 0 -1em;
+  padding: 12px 1em 10px;
+  background: var(--panel);
   border-bottom: 1px solid var(--line);
+}
+
+.debrief-explainer {
+  margin-left: auto;
+}
+
+.debrief-head .dialog-close {
+  align-self: flex-start;
+  flex: none;
 }
 
 .debrief-head h3 {

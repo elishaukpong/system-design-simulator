@@ -43,7 +43,8 @@ export function openDebrief(scenario: Scenario, result: RunResult, actions: Debr
       'div',
       { class: 'debrief-head', dataset: { pass: String(result.passed) } },
       h('div', {}, h('div', { class: 'card-kicker' }, scenario.title), h('h3', {}, `${result.passed ? '✓' : '✗'} ${verdict}`)),
-      h('div', { class: 'muted small' }, starsExplainer(result)),
+      h('div', { class: 'muted small debrief-explainer' }, starsExplainer(result)),
+      h('button', { class: 'dialog-close', title: 'Back to the design (Esc)', 'aria-label': 'Close', on: { click: close } }, '×'),
     ),
     h(
       'table',
